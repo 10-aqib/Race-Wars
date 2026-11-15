@@ -36,6 +36,9 @@ export class CarView {
   private disposed = false;
   private paint: number;
   private bodyBase = new THREE.Quaternion();
+  /** Geometry/materials created by this view (the model's own geometry is shared via the cache). */
+  private ownGeometry = new Set<THREE.BufferGeometry>();
+  private ownMaterials = new Set<THREE.Material>();
 
   constructor(opts: CarViewOptions) {
     this.paint = opts.paint;
@@ -68,7 +71,7 @@ export class CarView {
       const strut = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.1), mat); strut.position.set(x * 0.55, 1.07, 1.98); wing.add(strut);
     }
     wing.add(blade);
-    wing.traverse(n => { if (n instanceof THREE.Mesh) n.castShadow = true; });
+    wing.traverse(n => { if (n instanceof THREE.Mesh) { n.castShadow = true; this.ownGeometry.add(n.geometry); this.ownMaterials.add(n.material as THREE.Material); } });
     this.parts!.root.add(wing);
   }
 
@@ -200,12 +203,17 @@ export class CarView {
   dispose(): void {
     this.disposed = true;
     this.group.removeFromParent();
-    if (this.parts) disposeCarParts(this.parts);
+    const modelMeshes = new Set<THREE.Object3D>();
+    this.parts?.root.traverse(n => { if (!this.ownGeometry.has((n as THREE.Mesh).geometry)) modelMeshes.add(n); });
     this.group.traverse(n => {
-      if (n instanceof THREE.Mesh || n instanceof THREE.Sprite) {
-        const m = n.material as THREE.Material; m.dispose();
-        if (n instanceof THREE.Mesh && !this.parts?.root.getObjectById(n.id)) n.geometry.dispose();
+      if ((n instanceof THREE.Mesh || n instanceof THREE.Sprite) && !modelMeshes.has(n)) {
+        if (n instanceof THREE.Mesh) this.ownGeometry.add(n.geometry);
+        this.ownMaterials.add(n.material as THREE.Material);
       }
     });
+    if (this.parts) disposeCarParts(this.parts);
+    this.ownGeometry.forEach(g => g.dispose());
+    this.ownMaterials.forEach(m => m.dispose());
   }
+
 }

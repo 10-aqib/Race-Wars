@@ -87,6 +87,7 @@ async function openGame({ settings = {}, query = 'qa=1&seed=11', viewport = VIEW
   page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
   page.on('requestfailed', r => { if (!r.url().includes('socket.io')) errors.push(`requestfailed: ${r.url()}`); });
   await page.addInitScript(s => {
+    if (location.protocol === 'about:') return;
     if (!sessionStorage.getItem('qa-init')) {
       sessionStorage.setItem('qa-init', '1');
       localStorage.clear();

@@ -82,6 +82,13 @@ export class TrafficView {
   dispose(): void {
     this.group.removeFromParent();
     this.bodyMat.dispose(); this.tailMat.dispose();
-    this.group.traverse(n => { if (n instanceof THREE.Sprite) n.material.dispose(); });
+    const shared = new Set<THREE.BufferGeometry>([wheelGeo, ...geoCache.values()]);
+    this.group.traverse(n => {
+      if (n instanceof THREE.Sprite) n.material.dispose();
+      else if (n instanceof THREE.Mesh) {
+        if (!shared.has(n.geometry)) n.geometry.dispose();
+        if (n.material !== wheelMat && n.material !== glassMat) (n.material as THREE.Material).dispose();
+      }
+    });
   }
 }
