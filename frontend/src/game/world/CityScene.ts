@@ -334,7 +334,7 @@ export class CityScene {
       const sign = new THREE.Mesh(geo, mat);
       sign.position.set(p.x, 1.6, p.z);
       sign.rotation.y = t.headingAt(s);
-      if (k < 0) sign.scale.x = -1; // arrow points into the turn
+      if (k > 0) sign.scale.x = -1; // arrows point into the turn (texture points right)
       this.scene.add(sign);
     }
   }

@@ -84,8 +84,8 @@ export class CarView {
       this.group.add(s); this.glows.push(s);
     }
     for (const p of parts.headPoints) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xdfe9ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.45 }));
-      s.position.copy(p).add(new THREE.Vector3(0, 0, -0.1)); s.scale.setScalar(0.55);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xdfe9ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.28 }));
+      s.position.copy(p).add(new THREE.Vector3(0, 0, -0.1)); s.scale.setScalar(0.45);
       this.group.add(s); this.headGlows.push(s);
     }
     // Nitro flames from the exhaust

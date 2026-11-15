@@ -49,6 +49,7 @@ for (const [w, h] of SIZES) {
   await page.keyboard.press('KeyC');
   await page.keyboard.press('Escape'); await frames(4); await shot('6-pause');
   await page.keyboard.press('Escape');
+  await page.waitForFunction(() => window.RaceWars.state.state === 'RACING');
   await page.evaluate(() => { for (let i = 0; i < 80; i++) { if (window.RaceWars.qa.advance(5).state === 'RESULTS') break; } });
   await frames(8); await shot('7-results');
   await page.close();

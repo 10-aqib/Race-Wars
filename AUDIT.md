@@ -56,7 +56,71 @@ Date: 15 November 2026. This report covers the work done with the *RACE WARS Cla
 
 ## 4. Browser QA and release
 
-The QA results are recorded in [QA results](#qa-results) below.
+### QA results
+
+Environment: headless Chromium 153 with **SwiftShader software WebGL** (no GPU), Linux, Node 22.
+
+| Suite | Result |
+|---|---|
+| `npm test` (dev server + game server) | **29 tests**. Final full run: 27 passed, 2 failed. Both failures were fixed and the affected tests re-run and passed (see defects 9 and 10). |
+| `npm run test:prod` (`tsc` + `vite build` + `vite preview`) | **26 passed, 0 failed, 3 skipped**. The skipped tests are dev-only simulation checks that import TypeScript sources directly. |
+| `npm run build` | Passes: TypeScript strict, no errors. Bundle 1.09 MB (334 kB gzip), mostly three.js. |
+| `node --check backend/server.js` | Passes. |
+
+What the suite covers, all through real browser input and the real simulation: startup (WebGL, GLB model, self-hosted fonts, no console errors); every menu item and BACK, including keyboard navigation; garage browsing, selection, paint, drag and zoom; offline lobby options; grid, countdown and control lock; acceleration, gearbox, HUD values matching simulation values, top-speed limit; braking, reverse and coasting; speed-sensitive steering and self-centring; handbrake slide; nitro consumption, extra force and recharge; barrier and car-to-car collisions; camera cycling; focus loss and simultaneous keys; no page scroll on arrow keys; reset to track; pause, resume and settings-from-pause; AI progress and checkpoints; positions matching progress; finish, results and profile; race again and quit; resource and memory stability over repeated races; settings persisting across reload; HUD layout at 1366×768, 1024×640 and 800×600; difficulty changing lap times; anti-cutting and anti-reversing progress rules; server/client track agreement; a **two-browser online race** with synchronised positions and server results; server rejection of spoofed progress and early finish; disconnect handling; intro skip.
+
+Screens were captured at 1920×1080, 1600×900 and 1366×768 (`tests/screens.mjs` writes them to `frontend/qa-output/screens/`) and compared by eye against the reference video frames and storyboard.
+
+### Defects found during QA and fixed
+
+| # | Defect (reproduction) | Root cause | Fix |
+|---|---|---|---|
+| 1 | Chassis tipped onto its side while driving | Pitch/roll overwrote the GLB node's authored rotation | Compose suspension rotation with the base quaternion, using axes expressed in the parent frame |
+| 2 | Road invisible, so no lane markings | Ribbon triangles wound downward and were back-face culled | Corrected the winding |
+| 3 | AI drifted into the outside barrier in fast corners | The speed-sensitive steering limit was below the tyre slip angle needed to corner | Retuned cornering stiffness and steering falloff |
+| 4 | AI weaved ±6 m around its lane target | Pure pursuit was under-damped on the dynamic tyre model | Stanley controller with curvature feed-forward and yaw damping |
+| 5 | Racer near the player lapped about 2× slower than one running away from it | Traffic spawned only around the player | Round-robin spawning ahead of every racer |
+| 6 | After an angled barrier hit the car stayed pinned to the wall | Yaw damping on every contact step and high barrier friction | Removed the damping; barrier friction 0.3 → 0.12 |
+| 7 | Snap spins at full lock and full throttle at high speed | Full rear friction-circle coupling | Partial coupling (power oversteer kept at low speed) |
+| 8 | Countdown showed "3" after exactly 1 s | Floating-point `ceil` | Epsilon |
+| 9 | Geometry count grew by about 13 per race | TrafficView light/glass and CarView wing geometry were never disposed | Tracked and disposed per-instance resources (now 150 → 150 over 4 races, heap flat) |
+| 10 | Online finish rejected by the server | Volatile position updates dropped in bursts, so server progress lagged | The finish claim passes through the same physical bound |
+| 11 | Online clients disconnected at race start on slow devices | The main thread stalled while compiling race shaders | Shaders pre-compiled asynchronously while the menu is up; WebSocket-first transport; heartbeat timeout 60 s; disconnect reason shown |
+| 12 | Multiplayer JOIN button unreachable at 640×360 | Panel overflowed the viewport | Panels anchor under the header and scroll on short viewports |
+| 13 | Finished racers' progress kept rising during the cool-down lap | Progress was updated after the finish | Progress frozen at the finish |
+| 14 | Bright halos washed out the screen under streetlights; turntable over-exposed | Over-sized additive point sprites; spot, emissive and bloom stacking | Smaller and dimmer halos; lighting rebalanced |
+| 15 | Corner chevrons pointed away from the turn | Flip condition inverted | Corrected |
+
+### Performance
+
+- Simulation: 14 vehicles at 120 Hz cost well under 1 ms per frame. A complete headless 2-lap race (about 38k steps) simulates in under 1 s.
+- Rendering: the car GLB is 359k triangles. LOD hides interior and mechanical detail beyond 28–45 m, and only the body, wheels and glass cast shadows. Buildings, lamps, barriers and road are merged or instanced, which keeps the race scene at roughly 150 geometries and 28 textures.
+- Measured only on SwiftShader (a CPU rasteriser): about 13 fps at 1280×720 on medium in a race. That figure says nothing about real GPUs. Target: 60 fps on capable desktop GPUs; low quality (no shadows, no bloom, pixel ratio 1, two dynamic lights) is for weak systems. **Real-hardware profiling is still required.**
+- Memory: JS heap and GPU resources are flat across repeated races (see the stability test).
+- Asset load: about 1.7 MB car GLB (Draco), self-hosted fonts and a 335 kB gzip JS bundle. Time to the main menu was about 5–13 s under SwiftShader, dominated by first-frame shader compilation.
+
+### Run and build commands
+
+```bash
+cd backend
+npm install
+npm start
+```
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+```bash
+cd frontend
+npm test
+npm run test:prod
+npm run test:screens
+npm run build
+npm run preview
+```
 
 ## Multiplayer
 
