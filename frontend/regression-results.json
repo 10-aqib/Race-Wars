@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-20T14:44:42.035Z",
+  "results": [
+    {
+      "name": "GLB/DRACO load, home camera, rendered geometry",
+      "status": "PASS"
+    },
+    {
+      "name": "Countdown locks throttle and boost; then starts race",
+      "status": "PASS"
+    },
+    {
+      "name": "Keyboard forward movement and brake",
+      "status": "PASS"
+    },
+    {
+      "name": "Physics steering, boost drain, collision size, reverse",
+      "status": "PASS"
+    },
+    {
+      "name": "Road coverage at 0/500/1000/3000m, reverse and restart",
+      "status": "PASS"
+    },
+    {
+      "name": "Pause settings preserve car position; pause UI visible",
+      "status": "PASS"
+    },
+    {
+      "name": "Crash recovery and race clock while crashed",
+      "status": "PASS"
+    },
+    {
+      "name": "Race results, AI rankings and profile refresh",
+      "status": "PASS"
+    },
+    {
+      "name": "Free drive has no time limit and restart is playable",
+      "status": "PASS"
+    },
+    {
+      "name": "Reflections/shadows settings and hostile player-name escaping",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile menus fit viewport",
+      "status": "PASS"
+    },
+    {
+      "name": "Create/join three-player room; reject fourth",
+      "status": "PASS"
+    },
+    {
+      "name": "Malformed messages do not crash server; countdown/start/sync",
+      "status": "PASS"
+    },
+    {
+      "name": "Finish ranking ignores forged distance; room can race again",
+      "status": "PASS"
+    },
+    {
+      "name": "Leaving during countdown cancels abandoned start",
+      "status": "PASS"
+    },
+    {
+      "name": "Browser lobby roster and remote cars synchronize on join/leave",
+      "status": "PASS"
+    },
+    {
+      "name": "Missing model uses visible fallback without a stuck loading screen",
+      "status": "PASS"
+    },
+    {
+      "name": "Unavailable WebGL displays recoverable error screen",
+      "status": "PASS"
+    },
+    {
+      "name": "No uncaught browser runtime errors",
+      "status": "PASS"
+    }
+  ]
+}
