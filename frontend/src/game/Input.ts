@@ -1,146 +1,71 @@
 /**
- * Race Wars — Input Handler
- * Keyboard input with preset support and blur safety
+ * Race Wars — Keyboard input.
+ * WASD and arrow keys both work at all times. Held keys are tracked by code so
+ * simultaneous presses and releases resolve correctly; everything resets on
+ * focus loss. One-shot actions (pause, camera, reset, mute) are edge-triggered.
  */
 
-export type ControlPreset = 'WASD' | 'ARROWS';
+export type InputAction = 'pause' | 'camera' | 'reset' | 'mute';
+
+const HELD_CODES = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Space', 'ShiftLeft', 'ShiftRight',
+]);
+const ACTION_CODES: Record<string, InputAction> = { Escape: 'pause', KeyP: 'pause', KeyC: 'camera', KeyR: 'reset', KeyM: 'mute' };
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
 
 export class Input {
-  public forward = false;
-  public backward = false;
-  public left = false;
-  public right = false;
-  public boost = false;
-  public reset = false;
-  public pause = false;
-  public enter = false;
+  private held = new Set<string>();
+  private queued = new Set<InputAction>();
+  /** When true, arrow/space default browser behaviour (scrolling) is suppressed. */
+  public gameplayActive = false;
 
-  public currentPreset: ControlPreset = 'WASD';
-
-  // Track pause/reset as single presses
-  private resetPressed = false;
-  private pausePressed = false;
+  private readonly onDown = (e: KeyboardEvent) => {
+    if (isTyping(e.target)) return;
+    if (this.gameplayActive && SCROLL_KEYS.has(e.code)) e.preventDefault();
+    if (HELD_CODES.has(e.code)) this.held.add(e.code);
+    const action = ACTION_CODES[e.code];
+    if (action && !e.repeat) this.queued.add(action);
+  };
+  private readonly onUp = (e: KeyboardEvent) => { this.held.delete(e.code); };
+  private readonly onBlur = () => this.clearAll();
+  private readonly onVisibility = () => { if (document.hidden) this.clearAll(); };
 
   constructor() {
-    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    window.addEventListener('keyup', (e) => this.onKeyUp(e));
-
-    // Clear all inputs when window loses focus
-    window.addEventListener('blur', () => this.clearAll());
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.clearAll();
-    });
+    window.addEventListener('keydown', this.onDown);
+    window.addEventListener('keyup', this.onUp);
+    window.addEventListener('blur', this.onBlur);
+    document.addEventListener('visibilitychange', this.onVisibility);
   }
 
-  private onKeyDown(event: KeyboardEvent): void {
-    // Skip when typing in input/select
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) return;
+  get forward(): boolean { return this.held.has('KeyW') || this.held.has('ArrowUp'); }
+  get backward(): boolean { return this.held.has('KeyS') || this.held.has('ArrowDown'); }
+  get left(): boolean { return this.held.has('KeyA') || this.held.has('ArrowLeft'); }
+  get right(): boolean { return this.held.has('KeyD') || this.held.has('ArrowRight'); }
+  get handbrake(): boolean { return this.held.has('Space'); }
+  get nitro(): boolean { return this.held.has('ShiftLeft') || this.held.has('ShiftRight'); }
+  get heldCount(): number { return this.held.size; }
 
-    // Universal keys
-    switch (event.code) {
-      case 'KeyR':
-        if (!this.resetPressed) {
-          this.reset = true;
-          this.resetPressed = true;
-        }
-        return;
-      case 'Escape':
-        if (!this.pausePressed) {
-          this.pause = true;
-          this.pausePressed = true;
-        }
-        return;
-      case 'Enter':
-        this.enter = true;
-        return;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        this.boost = true;
-        return;
-    }
-
-    // Preset-specific
-    if (this.currentPreset === 'WASD') {
-      switch (event.code) {
-        case 'KeyW': this.forward = true; break;
-        case 'KeyS': this.backward = true; break;
-        case 'KeyA': this.left = true; break;
-        case 'KeyD': this.right = true; break;
-      }
-    } else if (this.currentPreset === 'ARROWS') {
-      switch (event.code) {
-        case 'ArrowUp': this.forward = true; event.preventDefault(); break;
-        case 'ArrowDown': this.backward = true; event.preventDefault(); break;
-        case 'ArrowLeft': this.left = true; event.preventDefault(); break;
-        case 'ArrowRight': this.right = true; event.preventDefault(); break;
-      }
-    }
+  /** Returns true once per key press. */
+  consume(action: InputAction): boolean {
+    const had = this.queued.has(action);
+    this.queued.delete(action);
+    return had;
   }
 
-  private onKeyUp(event: KeyboardEvent): void {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) return;
-
-    switch (event.code) {
-      case 'KeyR': this.reset = false; this.resetPressed = false; return;
-      case 'Escape': this.pause = false; this.pausePressed = false; return;
-      case 'Enter': this.enter = false; return;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        this.boost = false;
-        return;
-    }
-
-    if (this.currentPreset === 'WASD') {
-      switch (event.code) {
-        case 'KeyW': this.forward = false; break;
-        case 'KeyS': this.backward = false; break;
-        case 'KeyA': this.left = false; break;
-        case 'KeyD': this.right = false; break;
-      }
-    } else if (this.currentPreset === 'ARROWS') {
-      switch (event.code) {
-        case 'ArrowUp': this.forward = false; break;
-        case 'ArrowDown': this.backward = false; break;
-        case 'ArrowLeft': this.left = false; break;
-        case 'ArrowRight': this.right = false; break;
-      }
-    }
+  clearAll(): void {
+    this.held.clear();
+    this.queued.clear();
   }
 
-  public clearAll(): void {
-    this.forward = false;
-    this.backward = false;
-    this.left = false;
-    this.right = false;
-    this.boost = false;
-    this.reset = false;
-    this.pause = false;
-    this.enter = false;
-    this.resetPressed = false;
-    this.pausePressed = false;
+  dispose(): void {
+    window.removeEventListener('keydown', this.onDown);
+    window.removeEventListener('keyup', this.onUp);
+    window.removeEventListener('blur', this.onBlur);
+    document.removeEventListener('visibilitychange', this.onVisibility);
   }
+}
 
-  public consumeReset(): boolean {
-    if (this.reset) {
-      this.reset = false;
-      return true;
-    }
-    return false;
-  }
-
-  public consumePause(): boolean {
-    if (this.pause) {
-      this.pause = false;
-      return true;
-    }
-    return false;
-  }
-
-  public consumeEnter(): boolean {
-    if (this.enter) {
-      this.enter = false;
-      return true;
-    }
-    return false;
-  }
+function isTyping(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
 }

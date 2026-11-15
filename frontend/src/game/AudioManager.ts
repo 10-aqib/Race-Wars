@@ -97,7 +97,7 @@ export class AudioManager {
   private _applyVolumes(): void {
     if (!this._initialized) return;
     const s = settings.getAll();
-    const master = s.masterVolume / 100;
+    const master = s.muted ? 0 : s.masterVolume / 100;
     this.masterGain.gain.setTargetAtTime(master, this.ctx!.currentTime, 0.05);
     this.engineGain.gain.setTargetAtTime(s.engineVolume / 100, this.ctx!.currentTime, 0.05);
     this.effectsGain.gain.setTargetAtTime(s.effectsVolume / 100, this.ctx!.currentTime, 0.05);
@@ -476,6 +476,14 @@ export class AudioManager {
   }
 
   // ─── LIFECYCLE ─────────────────────────────────────────────────────────────
+
+  /** Current output gain (0 when muted) — exposed for QA checks. */
+  public get outputLevel(): number {
+    const s = settings.getAll();
+    return s.muted ? 0 : s.masterVolume / 100;
+  }
+
+  public get engineActive(): boolean { return this.engineRunning; }
 
   public resume(): void {
     if (this.ctx && this.ctx.state === 'suspended') {

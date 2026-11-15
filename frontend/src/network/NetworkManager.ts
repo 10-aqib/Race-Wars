@@ -9,8 +9,11 @@ import { gameState } from '../state/StateManager';
 export interface PlayerState {
   x: number;
   z: number;
-  h: number; // heading
-  speed: number;
+  h: number;        // heading
+  speed: number;    // m/s along heading
+  vx?: number;      // world velocity, used for dead reckoning
+  vz?: number;
+  progress?: number;// metres of race distance (server validates plausibility)
   isCrashed: boolean;
 }
 
@@ -18,8 +21,18 @@ export interface PlayerInfo {
   id: string;
   name: string;
   color: string;
+  carId?: string;
   isReady: boolean;
   distance: number;
+}
+
+export interface RankingEntry {
+  id: string;
+  name: string;
+  position: number;
+  finished: boolean;
+  time: number | null;
+  progress: number;
 }
 
 export class NetworkManager {
@@ -36,7 +49,8 @@ export class NetworkManager {
   
   public onCountdown?: (time: number) => void;
   public onRaceStart?: () => void;
-  public onRaceFinished?: (rankings: any[]) => void;
+  public onRaceFinished?: (rankings: RankingEntry[]) => void;
+  public connected = false;
   
   public onError?: (msg: string) => void;
   public onRoomLeft?: () => void;
@@ -56,9 +70,9 @@ export class NetworkManager {
     this.setupListeners();
   }
 
-  public connect(playerName: string, color: string): void {
-    this.socket.auth = { playerName, color };
-    this.socket.connect();
+  public connect(playerName: string, color: string, carId = 'vortex_r'): void {
+    this.socket.auth = { playerName, color, carId };
+    if (!this.socket.connected) this.socket.connect();
   }
 
   public disconnect(): void {
@@ -69,9 +83,11 @@ export class NetworkManager {
   private setupListeners(): void {
     this.socket.on('connect', () => {
       this.myId = this.socket.id || '';
+      this.connected = true;
     });
 
     this.socket.on('disconnect', () => {
+      this.connected = false;
       const wasInRoom = this.currentRoom !== null;
       this.currentRoom = null;
       this.onRoomLeft?.();
@@ -110,7 +126,7 @@ export class NetworkManager {
       if (this.onRaceStart) this.onRaceStart();
     });
 
-    this.socket.on('race_finished', (rankings: any[]) => {
+    this.socket.on('race_finished', (rankings: RankingEntry[]) => {
       if (this.onRaceFinished) this.onRaceFinished(rankings);
     });
 
@@ -150,8 +166,9 @@ export class NetworkManager {
     this.socket.volatile.emit('player_update', state); // volatile for high frequency, droppable packets
   }
 
-  public finishRace(distance: number): void {
-    this.socket.emit('finish_race', { distance });
+  /** Report finishing; the server checks it against the validated progress it has tracked. */
+  public finishRace(progress: number, time: number): void {
+    this.socket.emit('finish_race', { progress, time });
   }
 
   // --- Getters ---

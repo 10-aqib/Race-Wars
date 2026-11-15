@@ -1,648 +1,479 @@
-import { gameState } from '../state/StateManager';
-import type { GameState } from '../state/StateManager';
-import { settings } from '../state/SettingsManager';
+import { gameState, type GameState } from '../state/StateManager';
+import { settings, type GameSettings } from '../state/SettingsManager';
 import { profile } from '../state/ProfileManager';
-import type { NetworkManager, PlayerInfo } from '../network/NetworkManager';
+import type { NetworkManager, PlayerInfo, RankingEntry } from '../network/NetworkManager';
 import { audioManager } from '../game/AudioManager';
-import { CAR_CATALOGUE } from '../game/CarConfig';
+import { CAR_CATALOGUE, PAINT_COLORS, getCarById } from '../game/CarConfig';
+import { carStats } from '../game/vehicle/VehicleStats';
+import type { Game } from '../game/Game';
+import { formatTime } from './Hud';
 
 /**
- * Race Wars — UI Manager
- * Handles DOM manipulation and state bindings.
- * All settings controls NOW affect actual game state.
- * Garage is wired to 5 real car configurations.
+ * Race Wars — UI controller. Screens are plain DOM sections toggled by the
+ * global state machine; every visible control is wired to real state.
  */
+
+const SCREENS: Partial<Record<GameState, string>> = {
+  LOADING: 'loading-screen', INTRO: 'intro-screen', HOME: 'home-screen', RACE_LOBBY: 'race-lobby-screen',
+  GARAGE: 'garage-screen', PROFILE: 'profile-screen', SETTINGS: 'settings-screen', MULTIPLAYER: 'multiplayer-screen',
+  LOBBY: 'lobby-screen', PAUSED: 'pause-screen', RESULTS: 'results-screen', DISCONNECTED: 'disconnected-screen', ERROR: 'error-screen',
+};
+const HUD_STATES: GameState[] = ['COUNTDOWN', 'RACING', 'PAUSED', 'FINISHED'];
+const PAINTS = Object.keys(PAINT_COLORS);
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
 export class UIManager {
   private network: NetworkManager;
+  private game!: Game;
   private lobbyPlayers: PlayerInfo[] = [];
-
-  // Garage state
   private garageIndex = 0;
+  private settingsReturn: GameState | null = null;
+  private lastOnlineRankings: RankingEntry[] | null = null;
 
   constructor(network: NetworkManager) {
     this.network = network;
-    this.setupStateBindings();
-    this.setupButtonListeners();
-    this.setupSettingsBindings();
-    this.setupNetworkBindings();
-    this.setupGarage();
-
-    this.applySettingsToUI();
-    this.updateProfileUI();
-    this.renderGarageCard();
+    gameState.onStateChange((n, o) => this.onState(n, o));
+    this.bindNavigation();
+    this.bindRaceLobby();
+    this.bindGarage();
+    this.bindProfile();
+    this.bindSettings();
+    this.bindMultiplayer();
+    this.bindRaceControls();
+    this.syncSettingsUI();
   }
 
-  // =====================================================
-  // STATE MANAGEMENT
-  // =====================================================
+  attachGame(game: Game): void {
+    this.game = game;
+    game.onResults = () => this.renderOfflineResults();
+    const info = $('renderer-info');
+    if (info) {
+      const gl = game.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      info.textContent = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)).slice(0, 48) : 'WebGL';
+    }
+    this.drawLobbyMap();
+    this.refreshHome();
+  }
 
-  private setupStateBindings(): void {
-    gameState.onStateChange((newState, oldState) => {
-      const oldScreen = this.getScreenId(oldState);
-      if (oldScreen) document.getElementById(oldScreen)?.classList.remove('screen--active');
+  // ── State → screen ─────────────────────────────────────────────────────────
 
-      const newScreen = this.getScreenId(newState);
-      if (newScreen) document.getElementById(newScreen)?.classList.add('screen--active');
+  private onState(state: GameState, old: GameState): void {
+    const oldScreen = SCREENS[old];
+    const newScreen = SCREENS[state];
+    // Settings opened from pause keep the race HUD underneath
+    if (oldScreen && oldScreen !== newScreen) $(oldScreen)?.classList.remove('screen--active');
+    if (newScreen) $(newScreen)?.classList.add('screen--active');
+    const hud = $('racing-hud');
+    hud?.classList.toggle('is-visible', HUD_STATES.includes(state) || (state === 'SETTINGS' && this.settingsReturn === 'PAUSED'));
+    document.body.classList.toggle('in-race', HUD_STATES.includes(state) || state === 'RESULTS');
+    if (state === 'HOME') this.refreshHome();
+    if (state === 'RACE_LOBBY') this.renderRaceLobby();
+    if (state === 'GARAGE') this.openGarage();
+    if (state === 'PROFILE') this.renderProfile();
+    if (state === 'SETTINGS') this.syncSettingsUI();
+    if (state === 'MULTIPLAYER') this.renderMpStatus();
+    if (state === 'PAUSED') { $('pause-mp-note')!.style.display = this.network.isInRoom() ? 'block' : 'none'; ($('pause-restart') as HTMLButtonElement).disabled = this.network.isInRoom(); setTimeout(() => $('pause-resume')?.focus(), 30); }
+    if (state === 'RESULTS') setTimeout(() => $('results-again')?.focus(), 30);
+    if (state === 'HOME') setTimeout(() => (document.querySelector('.side-nav__item') as HTMLElement | null)?.focus({ preventScroll: true }), 30);
+    if (old === 'GARAGE' && state !== 'GARAGE') this.game?.refreshHero();
+  }
 
-      const hud = document.getElementById('racing-hud');
-      if (hud) {
-        hud.style.display = (newState === 'RACING' || newState === 'CRASHED' || newState === 'PAUSED' || newState === 'COUNTDOWN') ? 'block' : 'none';
+  private click(): void { audioManager.playUIClick(); }
+
+  private bindNavigation(): void {
+    document.querySelectorAll<HTMLButtonElement>('[data-nav]').forEach(btn => btn.addEventListener('click', () => {
+      this.click();
+      gameState.setState(btn.dataset.nav as GameState);
+    }));
+    document.querySelectorAll<HTMLButtonElement>('[data-back]').forEach(btn => btn.addEventListener('click', () => { this.click(); this.back(); }));
+    $('home-event')?.addEventListener('click', () => { this.click(); gameState.setState('RACE_LOBBY'); });
+    // Keyboard navigation for the side menu
+    $('home-nav')?.addEventListener('keydown', e => {
+      const items = Array.from(document.querySelectorAll<HTMLElement>('.side-nav__item'));
+      const i = items.indexOf(document.activeElement as HTMLElement);
+      if (e.key === 'ArrowDown') { items[(i + 1) % items.length].focus(); e.preventDefault(); }
+      if (e.key === 'ArrowUp') { items[(i - 1 + items.length) % items.length].focus(); e.preventDefault(); }
+    });
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !gameState.isGameplay() && ['RACE_LOBBY', 'GARAGE', 'PROFILE', 'SETTINGS', 'MULTIPLAYER'].includes(gameState.state)) {
+        if (e.target instanceof HTMLInputElement) return;
+        this.back();
       }
-
-      this.handleStateSpecificLogic(newState);
-      if (newState === 'PROFILE') this.updateProfileUI();
-    });
-  }
-
-  private getScreenId(state: GameState): string | null {
-    switch (state) {
-      case 'LOADING':      return 'loading-screen';
-      case 'INTRO':        return 'intro-screen';
-      case 'HOME':         return 'home-screen';
-      case 'MODE_SELECT':  return 'mode-screen';
-      case 'MULTIPLAYER':  return 'multiplayer-screen';
-      case 'LOBBY':        return 'lobby-screen';
-      case 'GARAGE':       return 'garage-screen';
-      case 'PROFILE':      return 'profile-screen';
-      case 'SETTINGS':     return 'settings-screen';
-      case 'RESULTS':      return 'results-screen';
-      case 'DISCONNECTED': return 'disconnected-screen';
-      case 'ERROR':        return 'error-screen';
-      case 'PAUSED':       return 'pause-screen';
-      default:             return null;
-    }
-  }
-
-  private handleStateSpecificLogic(state: GameState): void {
-    if (state === 'LOBBY') {
-      const btn = document.getElementById('lobby-ready-btn');
-      if (btn) { btn.textContent = 'READY'; btn.classList.remove('btn--ready-active'); }
-      this.network.setReady(false);
-    }
-    if (state === 'GARAGE') {
-      this.renderGarageCard();
-    }
-    if (state === 'SETTINGS') {
-      this.applySettingsToUI();
-    }
-    if (state === 'COUNTDOWN') {
-      audioManager.resume();
-    }
-  }
-
-  // =====================================================
-  // BUTTON LISTENERS
-  // =====================================================
-
-  private setupButtonListeners(): void {
-    // Back buttons
-    document.querySelectorAll('.btn--back').forEach(btn => {
-      btn.addEventListener('click', () => { audioManager.playUIClick(); gameState.goBack(); });
-    });
-
-    // Intro
-    document.getElementById('intro-screen')?.addEventListener('click', () => {
-      settings.set('introSeen', true);
-      gameState.setState('HOME');
-    });
-
-    // Home
-    document.getElementById('nav-race')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('MODE_SELECT'); });
-    document.getElementById('nav-multiplayer')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('MULTIPLAYER'); });
-    document.getElementById('nav-garage')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('GARAGE'); });
-    document.getElementById('nav-profile')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('PROFILE'); });
-    document.getElementById('nav-settings')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('SETTINGS'); });
-
-    document.getElementById('home-featured')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      (window as any).RaceWars.game.raceMode = 'time';
-      gameState.setState('COUNTDOWN');
-      this.startCountdown();
-    });
-
-    // Mode select
-    document.getElementById('mode-time-race')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      (window as any).RaceWars.game.raceMode = 'time';
-      gameState.setState('COUNTDOWN');
-      this.startCountdown();
-    });
-    document.getElementById('mode-free-drive')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      (window as any).RaceWars.game.raceMode = 'free';
-      gameState.setState('COUNTDOWN');
-      this.startCountdown();
-    });
-    document.getElementById('mode-multiplayer')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      gameState.setState('MULTIPLAYER');
-    });
-
-    // Multiplayer
-    document.getElementById('mp-create-btn')?.addEventListener('click', () => {
-      if (!settings.get('playerName')) { this.showNotification('Enter a player name first!'); return; }
-      audioManager.playUIClick();
-      this.network.connect(settings.get('playerName'), settings.get('selectedColor'));
-      this.network.createRoom();
-    });
-    document.getElementById('mp-join-btn')?.addEventListener('click', () => {
-      if (!settings.get('playerName')) { this.showNotification('Enter a player name first!'); return; }
-      const input = document.getElementById('mp-join-code') as HTMLInputElement;
-      const code = input.value.trim().toUpperCase();
-      if (code.length === 4) {
-        audioManager.playUIClick();
-        this.network.connect(settings.get('playerName'), settings.get('selectedColor'));
-        this.network.joinRoom(code);
-      } else {
-        this.showNotification('Invalid room code. Must be 4 letters.');
+      if (gameState.is('GARAGE') && !(e.target instanceof HTMLInputElement)) {
+        if (e.key === 'ArrowLeft') $('garage-prev')?.click();
+        if (e.key === 'ArrowRight') $('garage-next')?.click();
       }
     });
-
-    // Lobby
-    document.getElementById('lobby-copy-btn')?.addEventListener('click', async () => {
-      const code = this.network.getRoomCode();
-      if (code) {
-        try { await navigator.clipboard.writeText(code); } catch (_) {}
-        const el = document.getElementById('lobby-copied');
-        if (el) { el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 2000); }
-      }
-    });
-    document.getElementById('lobby-ready-btn')?.addEventListener('click', (e) => {
-      audioManager.playUIClick();
-      const btn = e.currentTarget as HTMLButtonElement;
-      const isReady = !btn.classList.contains('btn--ready-active');
-      btn.classList.toggle('btn--ready-active', isReady);
-      btn.textContent = isReady ? 'READY ✓' : 'READY';
-      this.network.setReady(isReady);
-    });
-    document.getElementById('lobby-leave-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      this.network.leaveRoom();
-      gameState.setState('MULTIPLAYER');
-    });
-
-    // Settings tabs
-    document.querySelectorAll('.settings__tab').forEach(tab => {
-      tab.addEventListener('click', (e) => {
-        audioManager.playUIClick();
-        const target = e.target as HTMLElement;
-        const tabId = target.getAttribute('data-tab');
-        document.querySelectorAll('.settings__tab').forEach(t => t.classList.remove('settings__tab--active'));
-        document.querySelectorAll('.settings__content').forEach(c => c.classList.remove('settings__content--active'));
-        target.classList.add('settings__tab--active');
-        document.getElementById(`settings-${tabId}`)?.classList.add('settings__content--active');
-      });
-    });
-
-    // Reset defaults button
-    document.getElementById('settings-reset-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      settings.reset();
-      this.applySettingsToUI();
-      this.showNotification('Settings reset to defaults');
-    });
-
-    // Profile / name input
-    const nameInput = document.getElementById('mp-player-name') as HTMLInputElement;
-    nameInput?.addEventListener('change', (e) => {
-      const val = (e.target as HTMLInputElement).value.trim();
-      settings.set('playerName', val);
-      this.updateProfileUI();
-      this.showNotification('Player name updated');
-    });
-
-    // Pause menu
-    document.getElementById('pause-resume-btn')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('RACING'); });
-    document.getElementById('pause-settings-btn')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('SETTINGS'); });
-    document.getElementById('pause-leave-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      document.getElementById('leave-confirm')!.style.display = 'flex';
-    });
-    document.getElementById('confirm-leave-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      document.getElementById('leave-confirm')!.style.display = 'none';
-      if (this.network.isInRoom()) this.network.leaveRoom();
-      gameState.setState('HOME');
-    });
-    document.getElementById('confirm-stay-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      document.getElementById('leave-confirm')!.style.display = 'none';
-    });
-
-    // Results
-    document.getElementById('results-race-again')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      if (this.network.isInRoom()) { gameState.setState('LOBBY'); }
-      else { gameState.setState('COUNTDOWN'); this.startCountdown(); }
-    });
-    document.getElementById('results-lobby-btn')?.addEventListener('click', () => { audioManager.playUIClick(); gameState.setState('LOBBY'); });
-    document.getElementById('results-menu-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      if (this.network.isInRoom()) this.network.leaveRoom();
-      gameState.setState('HOME');
-    });
-
-    // Disconnect / Error
-    document.getElementById('disconnect-menu-btn')?.addEventListener('click', () => gameState.setState('HOME'));
-    document.getElementById('error-retry-btn')?.addEventListener('click', () => gameState.setState('HOME'));
+    $('error-retry')?.addEventListener('click', () => location.reload());
+    $('disconnect-menu')?.addEventListener('click', () => gameState.setState('HOME'));
   }
 
-  // =====================================================
-  // GARAGE
-  // =====================================================
+  private back(): void {
+    if (gameState.is('SETTINGS') && this.settingsReturn === 'PAUSED') {
+      this.settingsReturn = null;
+      gameState.setState('PAUSED');
+      return;
+    }
+    gameState.goBack();
+    if (gameState.is('LOADING', 'INTRO')) gameState.setState('HOME');
+  }
 
-  private setupGarage(): void {
-    // Load persisted index
-    const savedId = (settings as any).get('selectedCarId') ?? 'vortex_r';
-    const idx = CAR_CATALOGUE.findIndex(c => c.id === savedId);
-    this.garageIndex = idx >= 0 ? idx : 0;
+  private refreshHome(): void {
+    const cfg = getCarById(settings.get('selectedCarId'));
+    $('home-driver-name')!.textContent = settings.get('playerName') || 'PLAYER';
+    $('home-driver-car')!.textContent = cfg.name;
+    const laps = settings.get('laps');
+    $('home-event-laps')!.textContent = settings.get('raceMode') === 'free' ? 'FREE DRIVE' : `${laps} LAP${laps > 1 ? 'S' : ''}`;
+    if (this.game) $('home-event-length')!.textContent = `${(this.game.track.length / 1000).toFixed(1)} KM`;
+  }
 
-    document.getElementById('garage-prev-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      this.garageIndex = (this.garageIndex - 1 + CAR_CATALOGUE.length) % CAR_CATALOGUE.length;
-      this.renderGarageCard();
+  // ── Offline race lobby ─────────────────────────────────────────────────────
+
+  private bindRaceLobby(): void {
+    document.querySelectorAll<HTMLElement>('.seg').forEach(seg => {
+      seg.querySelectorAll<HTMLButtonElement>('button').forEach(btn => btn.addEventListener('click', () => {
+        this.click();
+        const key = seg.dataset.setting as keyof GameSettings;
+        const raw = btn.dataset.value!;
+        settings.set(key, (key === 'laps' ? Number(raw) : raw) as never);
+        this.renderRaceLobby();
+      }));
     });
+    $('lobby-start')?.addEventListener('click', () => { this.click(); this.game.startOfflineRace(); });
+    $('lobby-change-car')?.addEventListener('click', () => { this.click(); gameState.setState('GARAGE'); });
+  }
 
-    document.getElementById('garage-next-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
-      this.garageIndex = (this.garageIndex + 1) % CAR_CATALOGUE.length;
-      this.renderGarageCard();
+  private renderRaceLobby(): void {
+    document.querySelectorAll<HTMLElement>('#race-lobby-screen .seg').forEach(seg => {
+      const v = String(settings.get(seg.dataset.setting as keyof GameSettings));
+      seg.querySelectorAll<HTMLButtonElement>('button').forEach(b => b.classList.toggle('is-active', b.dataset.value === v));
     });
+    const free = settings.get('raceMode') === 'free';
+    document.querySelectorAll<HTMLElement>('[data-race-only]').forEach(el => el.classList.toggle('is-disabled', free));
+    const cfg = getCarById(settings.get('selectedCarId'));
+    const diff = settings.get('difficulty').toUpperCase();
+    const rows = [
+      { name: settings.get('playerName') || 'YOU', car: cfg.name, color: settings.get('selectedColor'), tag: 'YOU', status: 'READY', ai: false },
+      ...(free ? [] : [
+        { name: 'RAYAN', car: 'APEX GT', color: 'blue', tag: `AI · ${diff} · BALANCED`, status: 'READY', ai: true },
+        { name: 'ZAIN', car: 'NOVA RS', color: 'green', tag: `AI · ${diff} · AGGRESSIVE`, status: 'READY', ai: true },
+      ]),
+    ];
+    $('race-roster')!.innerHTML = rows.map(r => `
+      <div class="racer-card${r.ai ? '' : ' racer-card--me'}">
+        <div class="racer-card__avatar" style="--c:${cssPaint(r.color)}">${esc(r.name.charAt(0))}</div>
+        <div class="racer-card__info"><div class="racer-card__name">${esc(r.name)}</div><div class="racer-card__meta">${esc(r.car)} · ${esc(r.tag)}</div></div>
+        <div class="racer-card__status">${r.status}</div>
+      </div>`).join('') + (free ? '<div class="roster__note">Free Drive: no opponents, no timer limit. Leave from the pause menu.</div>' : '');
+    ($('lobby-start') as HTMLButtonElement).textContent = free ? 'START DRIVING' : 'START RACE';
+  }
 
-    document.getElementById('garage-select-btn')?.addEventListener('click', () => {
-      audioManager.playUIClick();
+  private drawLobbyMap(): void {
+    const c = $('lobby-track-map') as HTMLCanvasElement | null;
+    if (!c || !this.game) return;
+    const t = this.game.track, ctx = c.getContext('2d')!;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < t.count; i++) { minX = Math.min(minX, t.px[i]); maxX = Math.max(maxX, t.px[i]); minZ = Math.min(minZ, t.pz[i]); maxZ = Math.max(maxZ, t.pz[i]); }
+    const s = (c.width - 30) / Math.max(maxX - minX, maxZ - minZ);
+    const ox = (c.width - (maxX - minX) * s) / 2, oz = (c.height - (maxZ - minZ) * s) / 2;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= t.count; i += 3) { const k = i % t.count; const x = ox + (t.px[k] - minX) * s, y = oz + (t.pz[k] - minZ) * s; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.strokeStyle = '#e8e8ea'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = '#e11d2a'; ctx.fillRect(ox + (t.px[0] - minX) * s - 7, oz + (t.pz[0] - minZ) * s - 2, 14, 4);
+    $('lobby-track-meta')!.textContent = `${(t.length / 1000).toFixed(2)} KM · ${t.checkpointCount} CHECKPOINTS`;
+  }
+
+  // ── Garage ─────────────────────────────────────────────────────────────────
+
+  private bindGarage(): void {
+    $('garage-paints')!.innerHTML = PAINTS.map(p => `<button class="paint" data-paint="${p}" style="--c:${cssPaint(p)}" aria-label="${p} paint"></button>`).join('');
+    document.querySelectorAll<HTMLButtonElement>('.paint').forEach(b => b.addEventListener('click', () => {
+      this.click();
+      settings.set('selectedColor', b.dataset.paint!);
+      this.game.setHeroPaint(PAINT_COLORS[b.dataset.paint!]);
+      this.renderGarage();
+    }));
+    const step = (d: number) => {
+      this.click();
+      this.garageIndex = (this.garageIndex + d + CAR_CATALOGUE.length) % CAR_CATALOGUE.length;
+      this.game.refreshHero(CAR_CATALOGUE[this.garageIndex].id);
+      this.renderGarage();
+    };
+    $('garage-prev')?.addEventListener('click', () => step(-1));
+    $('garage-next')?.addEventListener('click', () => step(1));
+    $('garage-rot-left')?.addEventListener('click', () => this.game.garage.rotateSelected(-0.6));
+    $('garage-rot-right')?.addEventListener('click', () => this.game.garage.rotateSelected(0.6));
+    $('garage-select')?.addEventListener('click', () => {
+      this.click();
       const car = CAR_CATALOGUE[this.garageIndex];
-      (settings as any).set('selectedCarId', car.id);
-      this.renderGarageCard(); // update SELECT → SELECTED
-      this.showNotification(`${car.name} selected!`);
-    });
-
-    // Color buttons still work
-    document.querySelectorAll('.color__btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        audioManager.playUIClick();
-        document.querySelectorAll('.color__btn').forEach(b => b.classList.remove('color__btn--active'));
-        const target = e.target as HTMLElement;
-        target.classList.add('color__btn--active');
-        const color = target.getAttribute('data-color');
-        if (color) settings.set('selectedColor', color);
-      });
+      settings.set('selectedCarId', car.id);
+      settings.set('selectedColor', Object.entries(PAINT_COLORS).find(([, v]) => v === car.bodyColor)?.[0] ?? settings.get('selectedColor'));
+      this.game.refreshHero(car.id);
+      this.game.setHeroPaint(PAINT_COLORS[settings.get('selectedColor')]);
+      this.toast(`${car.name} SELECTED`);
+      this.renderGarage();
     });
   }
 
-  private renderGarageCard(): void {
+  private openGarage(): void {
+    const idx = CAR_CATALOGUE.findIndex(c => c.id === settings.get('selectedCarId'));
+    this.garageIndex = idx >= 0 ? idx : 0;
+    this.game?.refreshHero();
+    this.renderGarage();
+  }
+
+  private renderGarage(): void {
     const car = CAR_CATALOGUE[this.garageIndex];
-    const selectedId = (settings as any).get('selectedCarId') ?? 'vortex_r';
-
-    const setT = (id: string, text: string) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = text;
-    };
-    const setW = (id: string, pct: number) => {
-      const el = document.getElementById(id);
-      if (el) el.style.width = `${pct}%`;
-    };
-
-    setT('garage-car-name', car.name);
-    setT('garage-car-tagline', car.tagline);
-    setT('garage-car-index', `${this.garageIndex + 1} / ${CAR_CATALOGUE.length}`);
-
-    setW('perf-bar-speed', car.statSpeed);
-    setW('perf-bar-accel', car.statAccel);
-    setW('perf-bar-handling', car.statHandling);
-    setW('perf-bar-braking', car.statBraking);
-    setW('perf-bar-boost', car.statBoost);
-
-    setT('perf-val-speed', car.statSpeed.toString());
-    setT('perf-val-accel', car.statAccel.toString());
-    setT('perf-val-handling', car.statHandling.toString());
-    setT('perf-val-braking', car.statBraking.toString());
-    setT('perf-val-boost', car.statBoost.toString());
-
-    const selectBtn = document.getElementById('garage-select-btn');
-    if (selectBtn) {
-      if (car.id === selectedId) {
-        selectBtn.textContent = '✓ SELECTED';
-        selectBtn.classList.add('btn--selected');
-      } else {
-        selectBtn.textContent = 'SELECT';
-        selectBtn.classList.remove('btn--selected');
-      }
-    }
-  }
-
-  // =====================================================
-  // SETTINGS BINDINGS — every control wires to settings
-  // =====================================================
-
-  private setupSettingsBindings(): void {
-    const bindToggle = (id: string, key: string, onChange?: (v: boolean) => void) => {
-      const el = document.getElementById(id) as HTMLInputElement;
-      if (!el) return;
-      el.addEventListener('change', (e) => {
-        const v = (e.target as HTMLInputElement).checked;
-        (settings as any).set(key, v);
-        onChange?.(v);
-      });
-    };
-
-    const bindSelect = (id: string, key: string, onChange?: (v: string) => void) => {
-      const el = document.getElementById(id) as HTMLSelectElement;
-      if (!el) return;
-      el.addEventListener('change', (e) => {
-        const v = (e.target as HTMLSelectElement).value;
-        (settings as any).set(key, v);
-        onChange?.(v);
-      });
-    };
-
-    const bindSlider = (id: string, valId: string, key: string) => {
-      const el = document.getElementById(id) as HTMLInputElement;
-      const val = document.getElementById(valId);
-      if (!el) return;
-      el.addEventListener('input', (e) => {
-        const v = (e.target as HTMLInputElement).value;
-        if (val) val.textContent = v + '%';
-      });
-      el.addEventListener('change', (e) => {
-        const v = parseInt((e.target as HTMLInputElement).value, 10);
-        (settings as any).set(key, v);
-      });
-    };
-
-    // Gameplay
-    bindToggle('setting-camera-shake', 'cameraShake');
-    bindToggle('setting-hud-visible', 'hudVisible', (v) => {
-      const hud = document.getElementById('racing-hud');
-      if (hud) hud.style.opacity = v ? '1' : '0';
+    const st = carStats(car);
+    const selected = car.id === settings.get('selectedCarId');
+    $('garage-car-index')!.textContent = `${this.garageIndex + 1} / ${CAR_CATALOGUE.length}`;
+    $('garage-car-name')!.textContent = car.name;
+    $('garage-car-tagline')!.textContent = car.tagline;
+    for (const [k, v] of Object.entries(st.bars)) { const el = $(`perf-${k}`); if (el) el.style.width = `${v}%`; }
+    const mph = settings.get('speedUnit') === 'mph';
+    $('fact-top')!.textContent = mph ? `${Math.round(st.topSpeedKmh * 0.621)} MPH` : `${st.topSpeedKmh} KM/H`;
+    $('fact-accel')!.textContent = `${st.zeroTo100.toFixed(2)} S`;
+    $('fact-brake')!.textContent = `${st.brake100to0.toFixed(1)} M`;
+    $('fact-power')!.textContent = `${st.powerKW} KW`;
+    $('fact-mass')!.textContent = `${st.massKg} KG`;
+    $('fact-nitro')!.textContent = `${st.nitroSeconds.toFixed(1)} S`;
+    const btn = $('garage-select') as HTMLButtonElement;
+    btn.textContent = selected ? '✓ SELECTED' : 'SELECT';
+    btn.classList.toggle('is-selected', selected);
+    document.querySelectorAll<HTMLButtonElement>('.paint').forEach(b => {
+      b.classList.toggle('is-active', selected && b.dataset.paint === settings.get('selectedColor'));
+      b.disabled = !selected;
+      b.title = selected ? '' : 'Select this car to change its paint';
     });
-    bindToggle('setting-minimap', 'minimap');
-    bindSelect('setting-speed-unit', 'speedUnit');
-
-    // Controls
-    bindSelect('setting-control-preset', 'controlPreset');
-
-    // Graphics — these apply to the renderer in Game.ts via settings.onChange
-    bindSelect('setting-quality', 'qualityPreset');
-    bindToggle('setting-shadows', 'shadows');
-    bindToggle('setting-reflections', 'reflections');
-    bindToggle('setting-antialiasing', 'antiAliasing', () => this.showNotification('Anti-aliasing takes effect after reloading the game.'));
-
-    // Audio — sliders update settings, Game.ts audio listens via settings.onChange
-    bindSlider('setting-master-vol', 'master-vol-display', 'masterVolume');
-    bindSlider('setting-music-vol', 'music-vol-display', 'musicVolume');
-    bindSlider('setting-engine-vol', 'engine-vol-display', 'engineVolume');
-    bindSlider('setting-effects-vol', 'effects-vol-display', 'effectsVolume');
-    bindSlider('setting-ui-vol', 'ui-vol-display', 'uiVolume');
   }
 
-  private applySettingsToUI(): void {
-    const s = settings.getAll();
-    const setToggle = (id: string, v: boolean) => { const el = document.getElementById(id) as HTMLInputElement; if (el) el.checked = v; };
-    const setSelect = (id: string, v: string) => { const el = document.getElementById(id) as HTMLSelectElement; if (el) el.value = v; };
-    const setSlider = (id: string, valId: string, v: number) => {
-      const el = document.getElementById(id) as HTMLInputElement;
-      if (el) el.value = v.toString();
-      const d = document.getElementById(valId);
-      if (d) d.textContent = v + '%';
-    };
+  // ── Profile ────────────────────────────────────────────────────────────────
 
-    setToggle('setting-camera-shake', s.cameraShake);
-    setToggle('setting-hud-visible', s.hudVisible);
-    setToggle('setting-minimap', s.minimap);
-    setToggle('setting-shadows', s.shadows);
-    setToggle('setting-reflections', s.reflections);
-    setToggle('setting-antialiasing', s.antiAliasing);
-    setSelect('setting-speed-unit', s.speedUnit);
-    setSelect('setting-control-preset', s.controlPreset);
-    setSelect('setting-quality', s.qualityPreset);
-    setSlider('setting-master-vol', 'master-vol-display', s.masterVolume);
-    setSlider('setting-music-vol', 'music-vol-display', s.musicVolume);
-    setSlider('setting-engine-vol', 'engine-vol-display', (s as any).engineVolume ?? 70);
-    setSlider('setting-effects-vol', 'effects-vol-display', s.effectsVolume);
-    setSlider('setting-ui-vol', 'ui-vol-display', (s as any).uiVolume ?? 50);
-
-    const nameEl = document.getElementById('mp-player-name') as HTMLInputElement;
-    if (nameEl) nameEl.value = s.playerName;
-
-    document.querySelectorAll('.color__btn').forEach(btn => {
-      btn.classList.toggle('color__btn--active', btn.getAttribute('data-color') === s.selectedColor);
-    });
-
-    const hud = document.getElementById('racing-hud');
-    if (hud) hud.style.opacity = s.hudVisible ? '1' : '0';
+  private bindProfile(): void {
+    const input = $('profile-name-input') as HTMLInputElement;
+    input?.addEventListener('change', () => { settings.set('playerName', input.value.trim().slice(0, 16)); this.toast('DRIVER NAME SAVED'); });
+    $('profile-reset')?.addEventListener('click', () => { if (confirm('Reset all race statistics?')) { profile.reset(); this.renderProfile(); } });
   }
 
-  private updateProfileUI(): void {
+  private renderProfile(): void {
     const p = profile.getStats();
-    const setT = (id: string, v: string) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    setT('profile-races', p.racesPlayed.toString());
-    setT('profile-wins', p.wins.toString());
-    setT('profile-win-rate', profile.getWinRate() + '%');
-    const unit = settings.get('speedUnit') === 'mph' ? 'MPH' : 'KM/H';
-    const top = settings.get('speedUnit') === 'mph' ? Math.round(p.bestSpeed * 0.621371) : p.bestSpeed;
-    setT('profile-best-speed', `${top} ${unit}`);
-    setT('profile-best-distance', p.bestDistance.toLocaleString() + ' M');
-    setT('profile-name', settings.get('playerName') || 'RACER_UNKNOWN');
+    ($('profile-name-input') as HTMLInputElement).value = settings.get('playerName');
+    const mph = settings.get('speedUnit') === 'mph';
+    $('stat-races')!.textContent = String(p.racesPlayed);
+    $('stat-wins')!.textContent = String(p.wins);
+    $('stat-podiums')!.textContent = String(p.podiums);
+    $('stat-winrate')!.textContent = `${profile.getWinRate()}%`;
+    $('stat-bestlap')!.textContent = p.bestLap ? formatTime(p.bestLap).slice(1) : '--';
+    $('stat-topspeed')!.textContent = String(mph ? Math.round(p.bestSpeed * 0.621) : p.bestSpeed);
+    $('stat-topspeed-unit')!.textContent = mph ? 'TOP MPH' : 'TOP KM/H';
+    $('stat-distance')!.textContent = `${(p.totalDistance / 1000).toFixed(1)} KM`;
   }
 
-  // =====================================================
-  // NETWORK BINDINGS
-  // =====================================================
+  // ── Settings ───────────────────────────────────────────────────────────────
 
-  private setupNetworkBindings(): void {
-    this.network.onError = msg => this.showNotification(msg);
-    this.network.onRoomJoined = (roomCode, players) => {
-      const el = document.getElementById('lobby-room-code');
-      if (el) el.textContent = roomCode;
+  private bindSettings(): void {
+    document.querySelectorAll<HTMLButtonElement>('.tab').forEach(tab => tab.addEventListener('click', () => {
+      this.click();
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('is-active', t === tab));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('is-active', p.id === `tab-${tab.dataset.tab}`));
+    }));
+    document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[id^="set-"]').forEach(el => {
+      const key = el.id.slice(4) as keyof GameSettings;
+      const ev = el instanceof HTMLInputElement && el.type === 'range' ? 'input' : 'change';
+      el.addEventListener(ev, () => {
+        let value: unknown;
+        if (el instanceof HTMLInputElement && el.type === 'checkbox') value = el.checked;
+        else if (el instanceof HTMLInputElement && el.type === 'range') value = Number(el.value);
+        else value = el.value;
+        settings.set(key, value as never);
+        if (key === 'antiAliasing') this.toast('ANTI-ALIASING APPLIES AFTER RELOAD');
+        this.syncSettingsUI();
+      });
+    });
+    $('settings-reset')?.addEventListener('click', () => { this.click(); const name = settings.get('playerName'); settings.reset(); settings.set('playerName', name); this.syncSettingsUI(); this.toast('SETTINGS RESET'); });
+  }
+
+  private syncSettingsUI(): void {
+    const s = settings.getAll() as unknown as Record<string, unknown>;
+    document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[id^="set-"]').forEach(el => {
+      const v = s[el.id.slice(4)];
+      if (el instanceof HTMLInputElement && el.type === 'checkbox') el.checked = Boolean(v);
+      else el.value = String(v);
+      const out = el.parentElement?.querySelector('output');
+      if (out) out.textContent = `${v}%`;
+    });
+  }
+
+  // ── Online multiplayer ─────────────────────────────────────────────────────
+
+  private bindMultiplayer(): void {
+    const name = $('mp-player-name') as HTMLInputElement;
+    name?.addEventListener('change', () => settings.set('playerName', name.value.trim().slice(0, 16)));
+    const connect = () => {
+      const n = (name?.value.trim() || settings.get('playerName')).slice(0, 16);
+      if (!n) { this.toast('ENTER A DRIVER NAME FIRST'); name?.focus(); return false; }
+      settings.set('playerName', n);
+      this.network.connect(n, settings.get('selectedColor'), settings.get('selectedCarId'));
+      $('mp-status')!.textContent = 'CONNECTING…';
+      return true;
+    };
+    $('mp-create-btn')?.addEventListener('click', () => { this.click(); if (connect()) this.network.createRoom(); });
+    $('mp-join-btn')?.addEventListener('click', () => {
+      this.click();
+      const code = ($('mp-join-code') as HTMLInputElement).value.trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(code)) { this.toast('ROOM CODES ARE 4 LETTERS'); return; }
+      if (connect()) this.network.joinRoom(code);
+    });
+    $('lobby-copy-btn')?.addEventListener('click', async () => {
+      const code = this.network.getRoomCode();
+      if (!code) return;
+      try { await navigator.clipboard.writeText(code); this.toast('ROOM CODE COPIED'); } catch { this.toast(`ROOM CODE: ${code}`); }
+    });
+    $('lobby-ready-btn')?.addEventListener('click', e => {
+      this.click();
+      const btn = e.currentTarget as HTMLButtonElement;
+      const ready = !btn.classList.contains('is-ready');
+      btn.classList.toggle('is-ready', ready);
+      btn.textContent = ready ? 'READY ✓' : 'READY';
+      this.network.setReady(ready);
+    });
+    $('lobby-leave-btn')?.addEventListener('click', () => { this.click(); this.network.leaveRoom(); gameState.setState('MULTIPLAYER'); });
+
+    this.network.onError = msg => { this.toast(msg.toUpperCase()); this.renderMpStatus(); };
+    this.network.onRoomJoined = (code, players) => {
+      $('lobby-room-code')!.textContent = code;
       this.lobbyPlayers = players;
-      this.renderLobbyPlayers();
+      const btn = $('lobby-ready-btn') as HTMLButtonElement; btn.classList.remove('is-ready'); btn.textContent = 'READY';
+      this.renderOnlineLobby();
       gameState.setState('LOBBY');
     };
     this.network.onPlayerJoined = (_, info) => {
       if (this.lobbyPlayers.some(p => p.id === info.id)) return;
-      this.lobbyPlayers.push(info);
-      this.renderLobbyPlayers();
-      this.showNotification(`${info.name} joined`);
+      this.lobbyPlayers.push(info); this.renderOnlineLobby(); this.toast(`${info.name} JOINED`);
     };
-    this.network.onPlayerLeft = (id) => {
+    this.network.onPlayerLeft = id => {
       const p = this.lobbyPlayers.find(x => x.id === id);
-      if (p) this.showNotification(`${p.name} left`);
+      if (p) this.toast(`${p.name} LEFT`);
       this.lobbyPlayers = this.lobbyPlayers.filter(x => x.id !== id);
-      this.renderLobbyPlayers();
+      this.renderOnlineLobby();
     };
-    this.network.onPlayerReady = (id, isReady) => {
-      const p = this.lobbyPlayers.find(x => x.id === id);
-      if (p) { p.isReady = isReady; this.renderLobbyPlayers(); }
-    };
-    this.network.onCountdown = (time) => {
-      if (!gameState.is('COUNTDOWN')) gameState.setState('COUNTDOWN');
-      this.updateCountdown(time);
+    this.network.onPlayerReady = (id, ready) => { const p = this.lobbyPlayers.find(x => x.id === id); if (p) { p.isReady = ready; this.renderOnlineLobby(); } };
+    this.network.onCountdown = value => {
+      if (!this.game.race.player || !gameState.isGameplay()) {
+        this.game.startOnlineRace(this.lobbyPlayers);
+        gameState.setState('COUNTDOWN');
+      }
+      void value;
     };
     this.network.onRaceStart = () => {
-      this.hideCountdown();
-      gameState.setState('RACING');
+      if (this.game.race.phase === 'countdown') { this.game.race.countdownTime = 0; }
+    };
+    this.network.onRaceFinished = rankings => {
+      this.lastOnlineRankings = rankings;
+      this.renderOnlineResults(rankings);
+      gameState.setState('RESULTS');
     };
   }
 
-  private renderLobbyPlayers(): void {
-    const container = document.getElementById('lobby-player-list');
-    if (!container) return;
-    container.innerHTML = '';
-    this.lobbyPlayers.forEach(p => {
-      const card = document.createElement('div');
-      card.className = 'player-card';
-      const isMe = p.id === this.network.getId();
-      const hostBadge = p.id === this.lobbyPlayers[0]?.id ? '<span class="player-card__badge">HOST</span>' : '';
-      const readyClass = p.isReady ? 'player-card__ready--yes' : 'player-card__ready--no';
-      card.innerHTML = `
-        <div class="player-card__color" style="background-color: var(--player-${p.color})"></div>
-        <div class="player-card__info">
-          <div class="player-card__name">${this.escapeHTML(p.name)} ${isMe ? '(YOU)' : ''} ${hostBadge}</div>
-        </div>
-        <div class="player-card__ready ${readyClass}">${p.isReady ? 'READY' : 'WAITING'}</div>
-      `;
-      container.appendChild(card);
+  private renderMpStatus(): void {
+    const el = $('mp-status');
+    if (el) el.textContent = this.network.connected ? 'CONNECTED' : 'NOT CONNECTED';
+    const name = $('mp-player-name') as HTMLInputElement | null;
+    if (name && !name.value) name.value = settings.get('playerName');
+  }
+
+  private renderOnlineLobby(): void {
+    const me = this.network.getId();
+    $('lobby-player-list')!.innerHTML = this.lobbyPlayers.map((p, i) => `
+      <div class="racer-card${p.id === me ? ' racer-card--me' : ''}">
+        <div class="racer-card__avatar" style="--c:${cssPaint(p.color)}">${esc(p.name.charAt(0))}</div>
+        <div class="racer-card__info"><div class="racer-card__name">${esc(p.name)}${p.id === me ? ' (YOU)' : ''}</div><div class="racer-card__meta">${esc(getCarById(p.carId ?? 'vortex_r').name)}${i === 0 ? ' · HOST' : ''}</div></div>
+        <div class="racer-card__status${p.isReady ? ' is-ready' : ''}">${p.isReady ? 'READY' : 'WAITING'}</div>
+      </div>`).join('');
+  }
+
+  // ── In-race controls ───────────────────────────────────────────────────────
+
+  private bindRaceControls(): void {
+    $('pause-resume')?.addEventListener('click', () => { this.click(); this.game.resume(); });
+    $('pause-restart')?.addEventListener('click', () => { this.click(); this.game.abandonRace(); this.game.restartRace(); });
+    $('pause-settings')?.addEventListener('click', () => { this.click(); this.settingsReturn = 'PAUSED'; gameState.setState('SETTINGS'); });
+    $('pause-leave')?.addEventListener('click', () => { this.click(); $('leave-confirm')!.classList.add('is-visible'); $('confirm-stay')?.focus(); });
+    $('confirm-stay')?.addEventListener('click', () => { this.click(); $('leave-confirm')!.classList.remove('is-visible'); });
+    $('confirm-leave')?.addEventListener('click', () => {
+      this.click();
+      $('leave-confirm')!.classList.remove('is-visible');
+      this.game.abandonRace();
+      if (this.network.isInRoom()) this.network.leaveRoom();
+      gameState.resetHistory('HOME');
+      gameState.setState('HOME');
+    });
+    $('results-again')?.addEventListener('click', () => {
+      this.click();
+      if (this.network.isInRoom()) { gameState.setState('LOBBY'); this.renderOnlineLobby(); return; }
+      this.game.startOfflineRace();
+    });
+    $('results-menu')?.addEventListener('click', () => {
+      this.click();
+      if (this.network.isInRoom()) this.network.leaveRoom();
+      gameState.resetHistory('HOME');
+      gameState.setState('HOME');
     });
   }
 
-  // =====================================================
-  // HUD — updated signature with boostFactor
-  // =====================================================
-
-  public updateHUD(speed: number, gear: string, distance: number, rpmFactor: number, timeStr: string, boostFactor: number = 1, minimapData: {type: string, progress: number}[] = []): void {
-    const elSpeed = document.getElementById('hud-speed');
-    const elUnit = document.getElementById('hud-speed-unit');
-    const elGear = document.getElementById('hud-gear');
-    const elDist = document.getElementById('hud-distance');
-    const elTimer = document.getElementById('hud-timer');
-    const elBoostFill = document.getElementById('hud-boost-fill');
-
-    if (elSpeed) elSpeed.textContent = speed.toString().padStart(3, '0');
-    if (elGear) {
-      elGear.textContent = gear;
-      elGear.style.color = rpmFactor > 0.85 ? 'var(--red-primary, #D42020)' : '';
-    }
-    if (elDist) elDist.textContent = distance.toLocaleString() + ' M';
-    if (elTimer) elTimer.textContent = timeStr;
-    if (elUnit) elUnit.textContent = settings.get('speedUnit') === 'mph' ? 'MPH' : 'KM/H';
-    if (elBoostFill) elBoostFill.style.width = `${Math.round(boostFactor * 100)}%`;
-
-    // Minimap
-    if (settings.get('minimap')) {
-      const minimap = document.getElementById('hud-minimap');
-      if (minimap) minimap.style.display = 'flex';
-      for (const entity of minimapData) {
-        const percent = Math.min(Math.max(entity.progress * 100, 0), 100);
-        let dot: HTMLElement | null = null;
-        if (entity.type === 'player') dot = document.getElementById('minimap-player');
-        if (entity.type === 'bot1') dot = document.getElementById('minimap-bot1');
-        if (entity.type === 'bot2') dot = document.getElementById('minimap-bot2');
-        if (dot) dot.style.bottom = `${percent}%`;
-      }
-    } else {
-      const minimap = document.getElementById('hud-minimap');
-      if (minimap) minimap.style.display = 'none';
-    }
+  private renderOfflineResults(): void {
+    const race = this.game.race;
+    const st = race.standings();
+    const me = st.find(s => s.isPlayer);
+    const free = race.options.mode === 'free';
+    $('results-kicker')!.textContent = `NIGHT CIRCUIT · ${race.options.laps} LAP${race.options.laps > 1 ? 'S' : ''} · ${race.options.difficulty.toUpperCase()} AI`;
+    $('results-place')!.textContent = me ? ordinal(me.position) + (me.finished ? '' : ' · DNF') : '';
+    $('results-place')!.classList.toggle('is-win', me?.position === 1);
+    const leader = st[0];
+    $('results-rankings')!.innerHTML = `<div class="results__row results__row--head"><span>POS</span><span>DRIVER</span><span>CAR</span><span>TIME</span><span>BEST LAP</span><span>TOP</span></div>` + st.map(s => {
+      const time = s.finished ? (s.position === 1 || !leader.finished ? formatTime(s.time) : `+${(s.time - leader.time).toFixed(3)}`) : `DNF · ${Math.round(Math.max(0, race.raceDistance - s.progress))}M LEFT`;
+      return `<div class="results__row${s.isPlayer ? ' results__row--me' : ''}" role="row"><span class="results__pos">${ordinal(s.position)}</span><span>${esc(s.name)}</span><span>${esc(s.carName)}</span><span>${time}</span><span>${s.bestLap ? formatTime(s.bestLap) : '--'}</span><span>${s.topSpeedKmh} KM/H</span></div>`;
+    }).join('');
+    const p = race.player!;
+    $('results-stats')!.innerHTML = [
+      ['YOUR TIME', p.finished ? formatTime(p.finishTime) : 'DNF'],
+      ['BEST LAP', p.bestLap ? formatTime(p.bestLap) : '--'],
+      ['TOP SPEED', `${Math.round(p.topSpeed * 3.6)} KM/H`],
+      ['CONTACTS', String(p.collisions)],
+      ['RESETS', String(p.resets)],
+    ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+    void free;
   }
 
-  public showCrash(): void {
-    const el = document.getElementById('hud-crash');
-    if (el) el.style.display = 'block';
+  private renderOnlineResults(rankings: RankingEntry[]): void {
+    const me = this.network.getId();
+    const mine = rankings.find(r => r.id === me);
+    $('results-kicker')!.textContent = 'ONLINE · NIGHT CIRCUIT · SERVER-VALIDATED';
+    $('results-place')!.textContent = mine ? ordinal(mine.position) : '';
+    $('results-rankings')!.innerHTML = `<div class="results__row results__row--head"><span>POS</span><span>DRIVER</span><span>STATUS</span><span>TIME</span><span></span><span></span></div>` + rankings.map(r =>
+      `<div class="results__row${r.id === me ? ' results__row--me' : ''}"><span class="results__pos">${ordinal(r.position)}</span><span>${esc(r.name)}</span><span>${r.finished ? 'FINISHED' : 'DNF'}</span><span>${r.finished && r.time ? formatTime(r.time) : `${Math.round(r.progress)} M`}</span><span></span><span></span></div>`).join('');
+    $('results-stats')!.innerHTML = '';
+    void this.lastOnlineRankings;
   }
 
-  public hideCrash(): void {
-    const el = document.getElementById('hud-crash');
-    if (el) el.style.display = 'none';
-  }
-
-  public showNearMiss(score: number): void {
-    const hud = document.getElementById('racing-hud');
-    if (!hud) return;
+  toast(msg: string): void {
+    const host = $('toasts');
+    if (!host) return;
     const el = document.createElement('div');
-    el.className = 'hud__near-miss-pop';
-    el.innerHTML = `NEAR MISS <span>+${score}</span>`;
-    hud.appendChild(el);
-    setTimeout(() => el.remove(), 1200);
-  }
-
-  public showPauseMenu(show: boolean): void {
-    const el = document.getElementById('pause-screen');
-    if (el) el.classList.toggle('screen--active', show);
-  }
-
-  // =====================================================
-  // COUNTDOWN & RESULTS
-  // =====================================================
-
-  public startCountdown(): void {
-    let count = 3;
-    this.updateCountdown(count);
-    const interval = setInterval(() => {
-      if (!gameState.is('COUNTDOWN')) { clearInterval(interval); this.hideCountdown(); return; }
-      count--;
-      if (count > 0) {
-        this.updateCountdown(count);
-        audioManager.playCountdown(false);
-      } else if (count === 0) {
-        this.updateCountdown('GO');
-        audioManager.playCountdown(true);
-      } else {
-        clearInterval(interval);
-        this.hideCountdown();
-        gameState.setState('RACING');
-      }
-    }, 1000);
-  }
-
-  private updateCountdown(val: number | string): void {
-    const overlay = document.getElementById('countdown-overlay');
-    const num = document.getElementById('countdown-num');
-    if (overlay && num) {
-      overlay.style.display = 'flex';
-      num.textContent = val.toString();
-      num.classList.toggle('countdown__number--go', val === 'GO' || val === 0);
-    }
-  }
-
-  private hideCountdown(): void {
-    const el = document.getElementById('countdown-overlay');
-    if (el) el.style.display = 'none';
-  }
-
-  public renderResults(rankings: any[]): void {
-    const container = document.getElementById('results-list') || document.getElementById('results-rankings');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!rankings?.length) {
-      rankings = [{ name: settings.get('playerName') || 'YOU', distance: document.getElementById('hud-distance')?.textContent }];
-    }
-    rankings.forEach((r, i) => {
-      const pos = i + 1;
-      const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th';
-      const row = document.createElement('div');
-      row.className = 'result__row';
-      row.innerHTML = `<div class="result__position">${pos}<sup>${suffix}</sup></div><div class="result__name">${this.escapeHTML(String(r.name))}</div><div class="result__distance">${this.escapeHTML(String(r.distance))} M</div>`;
-      container.appendChild(row);
-    });
-  }
-
-  // =====================================================
-  // UTILS
-  // =====================================================
-
-  private showNotification(msg: string): void {
-    const el = document.createElement('div');
-    el.className = 'notification';
+    el.className = 'toast';
     el.textContent = msg;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
-  }
-
-  private escapeHTML(value: string): string {
-    const span = document.createElement('span');
-    span.textContent = value;
-    return span.innerHTML;
+    host.appendChild(el);
+    setTimeout(() => el.classList.add('is-leaving'), 2400);
+    setTimeout(() => el.remove(), 2900);
   }
 }
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'TH' : ['TH', 'ST', 'ND', 'RD'][n % 10] ?? 'TH';
+  return `${n}${n % 10 > 3 ? 'TH' : s}`;
+}
+function cssPaint(name: string): string { return `#${(PAINT_COLORS[name] ?? 0xb3121b).toString(16).padStart(6, '0')}`; }
+function esc(v: string): string { return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!)); }

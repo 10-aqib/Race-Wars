@@ -4,575 +4,350 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Race Wars - Premium Multiplayer 3D Racing Game. Race. Survive. Dominate." />
+    <meta name="description" content="RACE WARS — night-city street racing in the browser. Race. Survive. Dominate." />
+    <meta name="theme-color" content="#08080a" />
     <title>Race Wars</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,600;1,700;1,800&display=swap" rel="stylesheet">
   </head>
   <body>
-    <!-- 3D Canvas Container -->
-    <div id="app">
-      <canvas id="game-canvas"></canvas>
-    </div>
+    <div id="app"><canvas id="game-canvas" aria-label="Race Wars 3D view"></canvas></div>
 
-    <!-- UI Layer -->
     <div id="ui-layer">
 
-      <!-- ==================== LOADING SCREEN ==================== -->
-      <div id="loading-screen" class="screen screen--active">
+      <!-- LOADING -->
+      <section id="loading-screen" class="screen screen--active" aria-live="polite">
         <div class="loading__content">
-          <div class="loading__logo">
-            <span class="logo__race">RACE</span><span class="logo__wars">WARS</span>
-          </div>
-          <div class="loading__bar-track">
-            <div class="loading__bar-fill" id="loading-bar-fill"></div>
-          </div>
-          <div class="loading__text" id="loading-text">LOADING 0%</div>
+          <div class="logo logo--lg"><span class="logo__race">RACE</span><span class="logo__wars">WARS</span></div>
+          <div class="loading__bar"><div class="loading__fill" id="loading-bar-fill"></div></div>
+          <div class="loading__text" id="loading-text">LOADING</div>
         </div>
-      </div>
+      </section>
 
-      <!-- ==================== CINEMATIC INTRO ==================== -->
-      <div id="intro-screen" class="screen">
-        <div class="intro__overlay" id="intro-overlay">
-          <div class="intro__logo intro__logo--hidden" id="intro-logo">
-            <span class="logo__race">RACE</span><span class="logo__wars">WARS</span>
-            <div class="intro__tagline">RACE. SURVIVE. DOMINATE.</div>
-          </div>
+      <!-- INTRO -->
+      <section id="intro-screen" class="screen" aria-label="Intro">
+        <div class="intro__fade" id="intro-fade"></div>
+        <div class="intro__bar intro__bar--top"></div>
+        <div class="intro__bar intro__bar--bottom"></div>
+        <div class="intro__logo" id="intro-logo">
+          <div class="logo logo--xl"><span class="logo__race">RACE</span><span class="logo__wars">WARS</span></div>
+          <div class="intro__tagline">RACE. SURVIVE. DOMINATE.</div>
         </div>
-        <div class="intro__skip">PRESS ESC OR CLICK TO SKIP</div>
-      </div>
+        <button class="intro__skip" id="intro-skip">SKIP INTRO <kbd>ESC</kbd></button>
+      </section>
 
-      <!-- ==================== HOME SCREEN ==================== -->
-      <div id="home-screen" class="screen">
-        <!-- Optional gradient overlay to ensure UI contrast against 3D canvas -->
-        <div class="home__vignette"></div>
-
-        <div class="home__header">
-          <div class="home__logo">
-            <span class="logo__race">RACE</span><span class="logo__wars">WARS</span>
-          </div>
-        </div>
-        
-        <nav class="home__nav" id="home-nav">
-          <div class="nav__item-container">
-            <button class="nav__item nav__item--active" data-target="race" id="nav-race">
-              <div class="nav__content">
-                <svg class="nav__icon" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" fill="currentColor"/></svg>
-                <span class="nav__label">RACE</span>
-              </div>
-            </button>
-          </div>
-          <div class="nav__item-container">
-            <button class="nav__item" data-target="multiplayer" id="nav-multiplayer">
-              <div class="nav__content">
-                <svg class="nav__icon" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="currentColor"/></svg>
-                <span class="nav__label">MULTIPLAYER</span>
-              </div>
-            </button>
-          </div>
-          <div class="nav__item-container">
-            <button class="nav__item" data-target="garage" id="nav-garage">
-              <div class="nav__content">
-                <svg class="nav__icon" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z" fill="currentColor"/></svg>
-                <span class="nav__label">GARAGE</span>
-              </div>
-            </button>
-          </div>
-          <div class="nav__item-container">
-            <button class="nav__item" data-target="profile" id="nav-profile">
-              <div class="nav__content">
-                <svg class="nav__icon" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="currentColor"/></svg>
-                <span class="nav__label">PROFILE</span>
-              </div>
-            </button>
-          </div>
-          <div class="nav__item-container">
-            <button class="nav__item" data-target="settings" id="nav-settings">
-              <div class="nav__content">
-                <svg class="nav__icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>
-                <span class="nav__label">SETTINGS</span>
-              </div>
-            </button>
-          </div>
+      <!-- HOME -->
+      <section id="home-screen" class="screen">
+        <div class="vignette"></div>
+        <div class="home__logo logo logo--md"><span class="logo__race">RACE</span><span class="logo__wars">WARS</span></div>
+        <nav class="side-nav" id="home-nav" aria-label="Main menu">
+          <div class="side-nav__brand">MAIN MENU</div>
+          <button class="side-nav__item" data-nav="RACE_LOBBY" id="nav-race"><span class="side-nav__idx">01</span>RACE</button>
+          <button class="side-nav__item" data-nav="MULTIPLAYER" id="nav-multiplayer"><span class="side-nav__idx">02</span>MULTIPLAYER</button>
+          <button class="side-nav__item" data-nav="GARAGE" id="nav-garage"><span class="side-nav__idx">03</span>GARAGE</button>
+          <button class="side-nav__item" data-nav="PROFILE" id="nav-profile"><span class="side-nav__idx">04</span>PROFILE</button>
+          <button class="side-nav__item" data-nav="SETTINGS" id="nav-settings"><span class="side-nav__idx">05</span>SETTINGS</button>
+          <div class="side-nav__hint">↑ ↓ to choose · ENTER to select</div>
         </nav>
-
-        <div class="home__featured" id="home-featured">
-          <div class="featured__image">
-            <div class="featured__overlay"></div>
-          </div>
-          <div class="featured__info">
-            <div class="featured__subtitle">FEATURED RACE</div>
-            <div class="featured__title">DOWNTOWN SPRINT</div>
-            <div class="featured__desc">High-speed race through the city streets.</div>
-            <div class="featured__accent"></div>
-          </div>
-          <div class="featured__arrow">
-            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
-          </div>
+        <div class="home__driver" id="home-driver">
+          <div class="home__driver-label">DRIVER</div>
+          <div class="home__driver-name" id="home-driver-name">PLAYER</div>
+          <div class="home__driver-car" id="home-driver-car">VORTEX R</div>
         </div>
-      </div>
+        <button class="event-card" id="home-event">
+          <div class="event-card__kicker">NEXT EVENT · OFFLINE</div>
+          <div class="event-card__title">NIGHT CIRCUIT</div>
+          <div class="event-card__meta"><span id="home-event-length">3.7 KM</span> · <span id="home-event-laps">2 LAPS</span> · 2 AI RIVALS</div>
+          <div class="event-card__cta">ENTER LOBBY ›</div>
+        </button>
+      </section>
 
-      <!-- ==================== MODE SELECT ==================== -->
-      <div id="mode-screen" class="screen">
-        <div class="screen__header">
-          <button class="btn--back" id="mode-back-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-            BACK
-          </button>
-          <h2 class="screen__title">SELECT MODE</h2>
-        </div>
-        <div class="mode__cards">
-          <button class="mode__card mode__card--active" id="mode-time-race">
-            <div class="mode__card-icon">⏱</div>
-            <div class="mode__card-info">
-              <h3>TIME RACE</h3>
-              <p>60 SEC · DISTANCE RACE</p>
-            </div>
-          </button>
-          <button class="mode__card" id="mode-free-drive">
-            <div class="mode__card-icon">🏁</div>
-            <div class="mode__card-info">
-              <h3>FREE DRIVE</h3>
-              <p>NO LIMIT · EXPLORE</p>
-            </div>
-          </button>
-          <button class="mode__card" id="mode-multiplayer">
-            <div class="mode__card-icon">👥</div>
-            <div class="mode__card-info">
-              <h3>MULTIPLAYER</h3>
-              <p>UP TO 3 PLAYERS · ONLINE</p>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <!-- ==================== MULTIPLAYER SCREEN ==================== -->
-      <div id="multiplayer-screen" class="screen">
-        <div class="screen__header">
-          <button class="btn--back" id="mp-back-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-            BACK
-          </button>
-          <h2 class="screen__title">MULTIPLAYER</h2>
-        </div>
-        <div class="mp__content">
-          <div class="mp__panel">
-            <div class="form__group">
-              <label class="form__label">PLAYER NAME</label>
-              <input type="text" id="mp-player-name" class="form__input" placeholder="Enter your name" maxlength="16" autocomplete="off" />
-            </div>
-
-            <div class="mp__divider"></div>
-
-            <h3 class="mp__section-title">CREATE PRIVATE ROOM</h3>
-            <div class="form__group">
-              <label class="form__label">ROOM CODE (OPTIONAL)</label>
-              <input type="text" id="mp-create-code" class="form__input" placeholder="Auto-generated if empty" maxlength="4" style="text-transform: uppercase;" autocomplete="off" />
-            </div>
-            <button class="btn btn--primary" id="mp-create-btn">CREATE ROOM</button>
-
-            <div class="mp__divider"></div>
-
-            <h3 class="mp__section-title">JOIN ROOM</h3>
-            <div class="form__group">
-              <label class="form__label">ROOM CODE</label>
-              <input type="text" id="mp-join-code" class="form__input" placeholder="Enter room code" maxlength="4" style="text-transform: uppercase;" autocomplete="off" />
-            </div>
-            <button class="btn btn--secondary" id="mp-join-btn">JOIN ROOM</button>
+      <!-- OFFLINE RACE LOBBY -->
+      <section id="race-lobby-screen" class="screen">
+        <div class="vignette vignette--strong"></div>
+        <header class="screen-header">
+          <button class="btn-back" data-back>‹ BACK</button>
+          <div>
+            <h2 class="screen-title">RACE LOBBY</h2>
+            <div class="screen-sub"><span class="badge badge--offline">OFFLINE</span> AI OPPONENTS · NO NETWORK REQUIRED</div>
           </div>
-
-          <div class="mp__notification" id="mp-notification" style="display:none;">
-            <span id="mp-notification-text"></span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== LOBBY SCREEN ==================== -->
-      <div id="lobby-screen" class="screen">
-        <div class="lobby__panel">
-          <div class="lobby__header">
-            <div class="lobby__room-info">
-              <span class="lobby__room-label">ROOM</span>
-              <span class="lobby__room-code" id="lobby-room-code">----</span>
-              <button class="lobby__copy-btn" id="lobby-copy-btn" title="Copy room code">
-                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
-              </button>
-              <span class="lobby__copied" id="lobby-copied" style="display:none;">COPIED</span>
+        </header>
+        <div class="lobby-grid">
+          <div class="roster" id="race-roster"></div>
+          <div class="panel race-options">
+            <h3 class="panel__title">RACE SETUP</h3>
+            <div class="option-row"><span>MODE</span><div class="seg" data-setting="raceMode"><button data-value="race">CIRCUIT RACE</button><button data-value="free">FREE DRIVE</button></div></div>
+            <div class="option-row" data-race-only><span>LAPS</span><div class="seg" data-setting="laps"><button data-value="1">1</button><button data-value="2">2</button><button data-value="3">3</button></div></div>
+            <div class="option-row" data-race-only><span>AI DIFFICULTY</span><div class="seg" data-setting="difficulty"><button data-value="easy">EASY</button><button data-value="normal">NORMAL</button><button data-value="hard">HARD</button></div></div>
+            <div class="option-row"><span>TRAFFIC</span><div class="seg" data-setting="traffic"><button data-value="off">OFF</button><button data-value="light">LIGHT</button><button data-value="normal">HEAVY</button></div></div>
+            <div class="race-options__track">
+              <canvas id="lobby-track-map" width="240" height="240" aria-label="Track map"></canvas>
+              <div><div class="race-options__track-name">NIGHT CIRCUIT</div><div class="race-options__track-meta" id="lobby-track-meta">3.74 KM · 12 CHECKPOINTS</div></div>
             </div>
-          </div>
-
-          <div class="lobby__players" id="lobby-player-list">
-            <!-- Populated dynamically -->
-          </div>
-
-          <div class="lobby__actions">
-            <button class="btn btn--ready" id="lobby-ready-btn">READY</button>
-            <button class="btn btn--start" id="lobby-start-btn" style="display:none;">START RACE</button>
-            <div class="lobby__waiting" id="lobby-waiting" style="display:none;">WAITING FOR HOST</div>
-            <button class="btn btn--leave" id="lobby-leave-btn">LEAVE ROOM</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== GARAGE / CAR SELECTION ==================== -->
-      <div id="garage-screen" class="screen">
-        <div class="screen__header">
-          <button class="btn--back" id="garage-back-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-            BACK
-          </button>
-          <h2 class="screen__title">GARAGE</h2>
-        </div>
-
-        <div class="garage__layout">
-          <!-- Car Info -->
-          <div class="garage__info">
-            <div class="garage__car-name" id="garage-car-name">VORTEX R</div>
-            <div class="garage__car-tagline" id="garage-car-tagline">Balanced sports car</div>
-            <div class="garage__car-index" id="garage-car-index">1 / 5</div>
-
-            <!-- Performance Stats -->
-            <div class="garage__performance">
-              <h3 class="perf__title">PERFORMANCE</h3>
-              <div class="perf__stat">
-                <span class="perf__label">SPEED</span>
-                <div class="perf__bar-track"><div class="perf__bar-fill" id="perf-bar-speed" style="width:82%"></div></div>
-                <span class="perf__val" id="perf-val-speed">82</span>
-              </div>
-              <div class="perf__stat">
-                <span class="perf__label">ACCELERATION</span>
-                <div class="perf__bar-track"><div class="perf__bar-fill" id="perf-bar-accel" style="width:74%"></div></div>
-                <span class="perf__val" id="perf-val-accel">74</span>
-              </div>
-              <div class="perf__stat">
-                <span class="perf__label">HANDLING</span>
-                <div class="perf__bar-track"><div class="perf__bar-fill" id="perf-bar-handling" style="width:80%"></div></div>
-                <span class="perf__val" id="perf-val-handling">80</span>
-              </div>
-              <div class="perf__stat">
-                <span class="perf__label">BRAKING</span>
-                <div class="perf__bar-track"><div class="perf__bar-fill" id="perf-bar-braking" style="width:78%"></div></div>
-                <span class="perf__val" id="perf-val-braking">78</span>
-              </div>
-              <div class="perf__stat">
-                <span class="perf__label">BOOST</span>
-                <div class="perf__bar-track"><div class="perf__bar-fill perf__bar-fill--boost" id="perf-bar-boost" style="width:75%"></div></div>
-                <span class="perf__val" id="perf-val-boost">75</span>
-              </div>
-            </div>
-
-            <!-- Color Picker -->
-            <div class="garage__colors">
-              <button class="color__btn color__btn--active" data-color="red" style="background:#D42020;"></button>
-              <button class="color__btn" data-color="blue" style="background:#2060D4;"></button>
-              <button class="color__btn" data-color="green" style="background:#20A040;"></button>
-              <button class="color__btn" data-color="black" style="background:#111111;"></button>
-              <button class="color__btn" data-color="yellow" style="background:#d4c020;"></button>
-            </div>
-          </div>
-
-          <!-- Navigation -->
-          <div class="garage__nav">
-            <button class="btn btn--secondary garage__nav-btn" id="garage-prev-btn">&#9664; PREV</button>
-            <button class="btn btn--primary garage__select-btn" id="garage-select-btn">SELECT</button>
-            <button class="btn btn--secondary garage__nav-btn" id="garage-next-btn">NEXT &#9654;</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== PROFILE SCREEN ==================== -->
-      <div id="profile-screen" class="screen">
-        <div class="screen__header">
-          <button class="btn--back" id="profile-back-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-            BACK
-          </button>
-          <h2 class="screen__title">PROFILE</h2>
-        </div>
-        <div class="profile__panel">
-          <div class="profile__avatar" id="profile-avatar">
-            <svg viewBox="0 0 24 24" width="48" height="48"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="currentColor"/></svg>
-          </div>
-          <h3 class="profile__name" id="profile-name">PLAYER</h3>
-          <div class="profile__stats">
-            <div class="profile__stat-row">
-              <span class="profile__stat-label">RACES PLAYED</span>
-              <span class="profile__stat-value" id="profile-races">0</span>
-            </div>
-            <div class="profile__stat-row">
-              <span class="profile__stat-label">WINS</span>
-              <span class="profile__stat-value" id="profile-wins">0</span>
-            </div>
-            <div class="profile__stat-row">
-              <span class="profile__stat-label">BEST DISTANCE</span>
-              <span class="profile__stat-value" id="profile-best-distance">0 m</span>
-            </div>
-            <div class="profile__stat-row">
-              <span class="profile__stat-label">BEST SPEED</span>
-              <span class="profile__stat-value" id="profile-best-speed">0 km/h</span>
-            </div>
-            <div class="profile__stat-row">
-              <span class="profile__stat-label">WIN RATE</span>
-              <span class="profile__stat-value" id="profile-win-rate">0%</span>
+            <div class="race-options__actions">
+              <button class="btn btn--ghost" id="lobby-change-car">CHANGE CAR</button>
+              <button class="btn btn--primary btn--lg" id="lobby-start">START RACE</button>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- ==================== SETTINGS SCREEN ==================== -->
-      <div id="settings-screen" class="screen">
-        <div class="screen__header">
-          <button class="btn--back" id="settings-back-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-            BACK
-          </button>
-          <h2 class="screen__title">SETTINGS</h2>
+      <!-- GARAGE / CAR SELECTION -->
+      <section id="garage-screen" class="screen">
+        <header class="screen-header">
+          <button class="btn-back" data-back>‹ BACK</button>
+          <div><h2 class="screen-title">GARAGE</h2><div class="screen-sub">DRAG TO ROTATE · SCROLL TO ZOOM</div></div>
+        </header>
+        <div class="garage-name">
+          <div class="garage-name__index" id="garage-car-index">1 / 5</div>
+          <div class="garage-name__title" id="garage-car-name">VORTEX R</div>
+          <div class="garage-name__tag" id="garage-car-tagline">Balanced street weapon</div>
+          <div class="paints" id="garage-paints" aria-label="Paint"></div>
         </div>
-        <div class="settings__panel">
-          <div class="settings__tabs">
-            <button class="settings__tab settings__tab--active" data-tab="gameplay">GAMEPLAY</button>
-            <button class="settings__tab" data-tab="controls">CONTROLS</button>
-            <button class="settings__tab" data-tab="graphics">GRAPHICS</button>
-            <button class="settings__tab" data-tab="audio">AUDIO</button>
-          </div>
-          <div class="settings__reset-row">
-            <button class="btn btn--secondary settings__reset-btn" id="settings-reset-btn">RESET TO DEFAULTS</button>
-          </div>
-
-          <!-- Gameplay Tab -->
-          <div class="settings__content settings__content--active" id="settings-gameplay">
-            <div class="setting__row">
-              <span class="setting__label">CAMERA SHAKE</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-camera-shake" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">HUD VISIBILITY</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-hud-visible" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">SPEED UNIT</span>
-              <select class="setting__select" id="setting-speed-unit">
-                <option value="kmh">KM/H</option>
-                <option value="mph">MPH</option>
-              </select>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">MINIMAP</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-minimap" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Controls Tab -->
-          <div class="settings__content" id="settings-controls">
-            <div class="setting__row">
-              <span class="setting__label">CONTROL PRESET</span>
-              <select class="setting__select" id="setting-control-preset">
-                <option value="WASD">WASD</option>
-                <option value="ARROWS">ARROW KEYS</option>
-              </select>
-            </div>
-            <div class="controls__grid">
-              <div class="control__key"><span class="key__label">ACCELERATE</span><span class="key__value" id="key-accel">W</span></div>
-              <div class="control__key"><span class="key__label">BRAKE / REVERSE</span><span class="key__value" id="key-brake">S</span></div>
-              <div class="control__key"><span class="key__label">STEER LEFT</span><span class="key__value" id="key-left">A</span></div>
-              <div class="control__key"><span class="key__label">STEER RIGHT</span><span class="key__value" id="key-right">D</span></div>
-              <div class="control__key"><span class="key__label">RESPAWN</span><span class="key__value">R</span></div>
-              <div class="control__key"><span class="key__label">PAUSE</span><span class="key__value">ESC</span></div>
-            </div>
-          </div>
-
-          <!-- Graphics Tab -->
-          <div class="settings__content" id="settings-graphics">
-            <div class="setting__row">
-              <span class="setting__label">QUALITY PRESET</span>
-              <select class="setting__select" id="setting-quality">
-                <option value="low">LOW</option>
-                <option value="medium">MEDIUM</option>
-                <option value="high" selected>HIGH</option>
-              </select>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">SHADOWS</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-shadows" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">REFLECTIONS</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-reflections" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">ANTI-ALIASING</span>
-              <label class="setting__toggle">
-                <input type="checkbox" id="setting-antialiasing" checked />
-                <span class="toggle__slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Audio Tab -->
-          <div class="settings__content" id="settings-audio">
-            <div class="setting__row">
-              <span class="setting__label">MASTER VOLUME</span>
-              <input type="range" class="setting__slider" id="setting-master-vol" min="0" max="100" value="80" />
-              <span class="setting__slider-value" id="master-vol-display">80%</span>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">MUSIC VOLUME</span>
-              <input type="range" class="setting__slider" id="setting-music-vol" min="0" max="100" value="60" />
-              <span class="setting__slider-value" id="music-vol-display">60%</span>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">ENGINE VOLUME</span>
-              <input type="range" class="setting__slider" id="setting-engine-vol" min="0" max="100" value="70" />
-              <span class="setting__slider-value" id="engine-vol-display">70%</span>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">EFFECTS VOLUME</span>
-              <input type="range" class="setting__slider" id="setting-effects-vol" min="0" max="100" value="75" />
-              <span class="setting__slider-value" id="effects-vol-display">75%</span>
-            </div>
-            <div class="setting__row">
-              <span class="setting__label">UI VOLUME</span>
-              <input type="range" class="setting__slider" id="setting-ui-vol" min="0" max="100" value="50" />
-              <span class="setting__slider-value" id="ui-vol-display">50%</span>
-            </div>
-          </div>
+        <div class="panel perf">
+          <h3 class="panel__title panel__title--red">PERFORMANCE</h3>
+          <div class="perf__row"><span>SPEED</span><div class="perf__bar"><i id="perf-speed"></i></div></div>
+          <div class="perf__row"><span>ACCELERATION</span><div class="perf__bar"><i id="perf-accel"></i></div></div>
+          <div class="perf__row"><span>HANDLING</span><div class="perf__bar"><i id="perf-handling"></i></div></div>
+          <div class="perf__row"><span>BRAKING</span><div class="perf__bar"><i id="perf-braking"></i></div></div>
+          <div class="perf__row"><span>NITRO</span><div class="perf__bar"><i id="perf-nitro"></i></div></div>
+          <dl class="perf__facts">
+            <div><dt>TOP SPEED</dt><dd id="fact-top">—</dd></div>
+            <div><dt>0–100 KM/H</dt><dd id="fact-accel">—</dd></div>
+            <div><dt>100–0 BRAKING</dt><dd id="fact-brake">—</dd></div>
+            <div><dt>POWER</dt><dd id="fact-power">—</dd></div>
+            <div><dt>MASS</dt><dd id="fact-mass">—</dd></div>
+            <div><dt>NITRO</dt><dd id="fact-nitro">—</dd></div>
+          </dl>
+          <div class="perf__note">Figures measured by the in-game physics simulation.</div>
         </div>
-      </div>
-
-      <!-- ==================== COUNTDOWN OVERLAY ==================== -->
-      <div id="countdown-overlay" class="overlay" style="display:none;">
-        <div class="countdown__number" id="countdown-num">3</div>
-      </div>
-
-      <!-- ==================== RACING HUD ==================== -->
-      <div id="racing-hud" class="screen" style="display:none;">
-        <!-- Timer -->
-        <div class="hud__timer" id="hud-timer">00:60</div>
-
-        <!-- Distance -->
-        <div class="hud__distance" id="hud-distance">0 m</div>
-
-        <!-- Ranking -->
-        <div class="hud__ranking" id="hud-ranking">
-          <!-- Populated dynamically -->
+        <div class="garage-controls">
+          <button class="btn btn--ghost" id="garage-prev" aria-label="Previous car">‹ PREV</button>
+          <button class="btn btn--icon" id="garage-rot-left" aria-label="Rotate left">⟲</button>
+          <button class="btn btn--primary btn--lg" id="garage-select">SELECT</button>
+          <button class="btn btn--icon" id="garage-rot-right" aria-label="Rotate right">⟳</button>
+          <button class="btn btn--ghost" id="garage-next" aria-label="Next car">NEXT ›</button>
         </div>
+      </section>
 
-        <!-- Speedometer + Gear -->
-        <div class="hud__speedo">
-          <div class="speedo__speed" id="hud-speed">000</div>
-          <div class="speedo__unit" id="hud-speed-unit">KM/H</div>
-          <div class="speedo__gear" id="hud-gear">N</div>
+      <!-- PROFILE -->
+      <section id="profile-screen" class="screen">
+        <div class="vignette vignette--left"></div>
+        <header class="screen-header">
+          <button class="btn-back" data-back>‹ BACK</button>
+          <div><h2 class="screen-title">PROFILE</h2><div class="screen-sub">SAVED ON THIS DEVICE</div></div>
+        </header>
+        <div class="panel profile">
+          <label class="field"><span>DRIVER NAME</span><input id="profile-name-input" maxlength="16" autocomplete="off" placeholder="Enter your name" /></label>
+          <div class="stats-grid">
+            <div class="stat"><b id="stat-races">0</b><span>RACES</span></div>
+            <div class="stat"><b id="stat-wins">0</b><span>WINS</span></div>
+            <div class="stat"><b id="stat-podiums">0</b><span>PODIUMS</span></div>
+            <div class="stat"><b id="stat-winrate">0%</b><span>WIN RATE</span></div>
+            <div class="stat"><b id="stat-bestlap">--</b><span>BEST LAP</span></div>
+            <div class="stat"><b id="stat-topspeed">0</b><span id="stat-topspeed-unit">TOP KM/H</span></div>
+            <div class="stat stat--wide"><b id="stat-distance">0 KM</b><span>TOTAL DISTANCE</span></div>
+          </div>
+          <button class="btn btn--ghost btn--sm" id="profile-reset">RESET STATISTICS</button>
         </div>
+      </section>
 
-        <!-- Boost Meter -->
-        <div class="hud__boost">
-          <div class="hud__boost-label">BOOST</div>
-          <div class="hud__boost-track">
-            <div class="hud__boost-fill" id="hud-boost-fill" style="width:100%"></div>
+      <!-- SETTINGS -->
+      <section id="settings-screen" class="screen">
+        <div class="vignette vignette--strong"></div>
+        <header class="screen-header">
+          <button class="btn-back" data-back>‹ BACK</button>
+          <div><h2 class="screen-title">SETTINGS</h2><div class="screen-sub">CHANGES ARE SAVED AUTOMATICALLY</div></div>
+        </header>
+        <div class="panel settings">
+          <div class="tabs" role="tablist">
+            <button class="tab is-active" data-tab="gameplay" role="tab">GAMEPLAY</button>
+            <button class="tab" data-tab="controls" role="tab">CONTROLS</button>
+            <button class="tab" data-tab="graphics" role="tab">GRAPHICS</button>
+            <button class="tab" data-tab="audio" role="tab">AUDIO</button>
+          </div>
+          <div class="tab-panel is-active" id="tab-gameplay">
+            <label class="setting"><span>SPEED UNIT</span><select id="set-speedUnit"><option value="kmh">KM/H</option><option value="mph">MPH</option></select></label>
+            <label class="setting"><span>DEFAULT CAMERA</span><select id="set-cameraMode"><option value="chase">CHASE</option><option value="close">CLOSE</option><option value="hood">HOOD</option></select></label>
+            <label class="setting"><span>CAMERA SHAKE</span><input type="checkbox" id="set-cameraShake" class="toggle" /></label>
+            <label class="setting"><span>SHOW HUD</span><input type="checkbox" id="set-hudVisible" class="toggle" /></label>
+            <label class="setting"><span>MINIMAP</span><input type="checkbox" id="set-minimap" class="toggle" /></label>
+            <label class="setting"><span>PLAY INTRO ON STARTUP</span><input type="checkbox" id="set-introOnStartup" class="toggle" /></label>
+          </div>
+          <div class="tab-panel" id="tab-controls">
+            <div class="keys">
+              <div><kbd>W</kbd><kbd>↑</kbd><span>ACCELERATE</span></div>
+              <div><kbd>S</kbd><kbd>↓</kbd><span>BRAKE / REVERSE</span></div>
+              <div><kbd>A</kbd><kbd>←</kbd><span>STEER LEFT</span></div>
+              <div><kbd>D</kbd><kbd>→</kbd><span>STEER RIGHT</span></div>
+              <div><kbd>SPACE</kbd><span>HANDBRAKE</span></div>
+              <div><kbd>SHIFT</kbd><span>NITRO</span></div>
+              <div><kbd>C</kbd><span>CHANGE CAMERA</span></div>
+              <div><kbd>R</kbd><span>RESET TO TRACK</span></div>
+              <div><kbd>M</kbd><span>MUTE AUDIO</span></div>
+              <div><kbd>ESC</kbd><span>PAUSE</span></div>
+            </div>
+            <p class="settings__note">WASD and arrow keys work at the same time.</p>
+          </div>
+          <div class="tab-panel" id="tab-graphics">
+            <label class="setting"><span>QUALITY</span><select id="set-qualityPreset"><option value="low">LOW</option><option value="medium">MEDIUM</option><option value="high">HIGH</option></select></label>
+            <label class="setting"><span>SHADOWS</span><input type="checkbox" id="set-shadows" class="toggle" /></label>
+            <label class="setting"><span>REFLECTIONS</span><input type="checkbox" id="set-reflections" class="toggle" /></label>
+            <label class="setting"><span>ANTI-ALIASING <small>(applies after reload)</small></span><input type="checkbox" id="set-antiAliasing" class="toggle" /></label>
+            <div class="setting setting--info"><span>RENDERER</span><b id="renderer-info">—</b></div>
+          </div>
+          <div class="tab-panel" id="tab-audio">
+            <label class="setting"><span>MUTE ALL</span><input type="checkbox" id="set-muted" class="toggle" /></label>
+            <label class="setting"><span>MASTER</span><input type="range" min="0" max="100" id="set-masterVolume" /><output></output></label>
+            <label class="setting"><span>MUSIC</span><input type="range" min="0" max="100" id="set-musicVolume" /><output></output></label>
+            <label class="setting"><span>ENGINE</span><input type="range" min="0" max="100" id="set-engineVolume" /><output></output></label>
+            <label class="setting"><span>EFFECTS</span><input type="range" min="0" max="100" id="set-effectsVolume" /><output></output></label>
+            <label class="setting"><span>INTERFACE</span><input type="range" min="0" max="100" id="set-uiVolume" /><output></output></label>
+          </div>
+          <div class="settings__footer"><button class="btn btn--ghost btn--sm" id="settings-reset">RESET TO DEFAULTS</button></div>
+        </div>
+      </section>
+
+      <!-- ONLINE MULTIPLAYER -->
+      <section id="multiplayer-screen" class="screen">
+        <div class="vignette vignette--strong"></div>
+        <header class="screen-header">
+          <button class="btn-back" data-back>‹ BACK</button>
+          <div><h2 class="screen-title">MULTIPLAYER</h2><div class="screen-sub"><span class="badge badge--online">ONLINE</span> REQUIRES THE RACE WARS SERVER · UP TO 3 PLAYERS</div></div>
+        </header>
+        <div class="panel mp">
+          <p class="mp__note">Online rooms connect to the Race Wars server (<code>backend/</code>). Race against AI offline from <b>RACE</b> if no server is running.</p>
+          <div class="mp__status">SERVER: <b id="mp-status">NOT CONNECTED</b></div>
+          <label class="field"><span>DRIVER NAME</span><input type="text" id="mp-player-name" maxlength="16" autocomplete="off" placeholder="Enter your name" /></label>
+          <div class="mp__cols">
+            <div>
+              <h3 class="panel__title">CREATE ROOM</h3>
+              <button class="btn btn--primary" id="mp-create-btn">CREATE ROOM</button>
+            </div>
+            <div>
+              <h3 class="panel__title">JOIN ROOM</h3>
+              <input type="text" id="mp-join-code" class="code-input" maxlength="4" placeholder="CODE" autocomplete="off" aria-label="Room code" />
+              <button class="btn btn--ghost" id="mp-join-btn">JOIN</button>
+            </div>
           </div>
         </div>
+      </section>
 
-        <!-- Minimap -->
-        <div class="hud__minimap" id="hud-minimap">
-          <div class="minimap__track"></div>
-          <div class="minimap__player" id="minimap-player"></div>
-          <div class="minimap__bot minimap__bot--blue" id="minimap-bot1"></div>
-          <div class="minimap__bot minimap__bot--green" id="minimap-bot2"></div>
+      <!-- ONLINE ROOM LOBBY -->
+      <section id="lobby-screen" class="screen">
+        <div class="vignette vignette--strong"></div>
+        <header class="screen-header">
+          <button class="btn-back" id="lobby-leave-btn">‹ LEAVE ROOM</button>
+          <div><h2 class="screen-title">ROOM <span id="lobby-room-code">----</span></h2><div class="screen-sub"><span class="badge badge--online">ONLINE</span> SHARE THE CODE · EVERYONE READY STARTS THE RACE</div></div>
+        </header>
+        <div class="lobby-grid">
+          <div class="roster" id="lobby-player-list"></div>
+          <div class="panel race-options">
+            <h3 class="panel__title">ONLINE RACE</h3>
+            <p class="mp__note">1 lap of the Night Circuit. Positions, progress and finishing order are validated by the server.</p>
+            <button class="btn btn--ghost" id="lobby-copy-btn">COPY CODE</button>
+            <button class="btn btn--primary btn--lg" id="lobby-ready-btn">READY</button>
+          </div>
         </div>
+      </section>
 
-        <!-- Near Miss -->
-        <div class="hud__near-miss" id="hud-near-miss" style="display:none;">
-          NEAR MISS <span class="near-miss__points">+25</span>
+      <!-- COUNTDOWN -->
+      <div id="countdown-overlay" class="countdown" aria-live="assertive"><div class="countdown__number" id="countdown-num">3</div></div>
+
+      <!-- RACING HUD -->
+      <section id="racing-hud" class="hud" aria-label="Race HUD">
+        <div class="hud__top-left">
+          <div class="hud__pos"><span class="hud__pos-label">POS</span><span id="hud-position">1</span><small id="hud-position-total">/3</small></div>
+          <div class="board" id="hud-board"></div>
         </div>
-
-        <!-- Crash Overlay -->
-        <div class="hud__crash" id="hud-crash" style="display:none;">
-          <div class="crash__title">CRASHED</div>
-          <div class="crash__subtitle">PRESS R TO RESPAWN</div>
+        <div class="hud__top-center">
+          <div class="hud__timer" id="hud-timer">00:00.000</div>
+          <div class="hud__lap"><span id="hud-lap">LAP 1/2</span><span class="hud__sep">|</span><span id="hud-best">BEST --:--.---</span></div>
+          <div class="hud__progress"><div class="hud__progress-fill" id="hud-progress-fill"></div></div>
+          <div class="hud__progress-text" id="hud-progress-text">0.00 KM TO GO</div>
         </div>
-      </div>
+        <div class="hud__top-right"><span class="hud__cam">CAM <b id="hud-camera">CHASE</b></span><span class="hud__keys">C CAMERA · R RESET · ESC PAUSE</span></div>
+        <div class="hud__minimap" id="hud-minimap"><canvas id="hud-minimap-canvas"></canvas></div>
+        <div class="cluster">
+          <svg class="gauge" viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="58" class="gauge__bg" />
+            <path class="gauge__track" d="M 23.2 96.8 A 52 52 0 1 1 96.8 96.8" />
+            <path class="gauge__arc" id="rpm-arc" />
+            <g id="rpm-ticks"></g>
+            <g id="rpm-needle"><line x1="60" y1="60" x2="60" y2="16" class="gauge__needle" /></g>
+            <circle cx="60" cy="60" r="5" class="gauge__hub" />
+            <text x="60" y="88" class="gauge__label">RPM ×1000</text>
+          </svg>
+          <div class="cluster__center">
+            <div class="cluster__speed"><span id="hud-speed">000</span><small id="hud-speed-unit">KM/H</small></div>
+            <div class="cluster__gear-row"><span class="cluster__rpm"><b id="hud-rpm">0.9</b>K</span><span class="cluster__gear" id="hud-gear">N</span></div>
+          </div>
+          <svg class="gauge gauge--nitro" id="hud-nitro-wrap" viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="58" class="gauge__bg" />
+            <path class="gauge__track" d="M 24.6 95.4 A 50 50 0 1 1 95.4 95.4" />
+            <path class="gauge__arc gauge__arc--nitro" id="nitro-arc" />
+            <text x="60" y="62" class="gauge__value" id="hud-nitro-pct">100</text>
+            <text x="60" y="80" class="gauge__label">NITRO</text>
+          </svg>
+        </div>
+        <div class="hud__message" id="hud-message"></div>
+        <div class="hud__wrong-way" id="hud-wrong-way">WRONG WAY</div>
+        <div id="hud-labels" class="hud__labels"></div>
+      </section>
 
-      <!-- ==================== PAUSE MENU ==================== -->
-      <div id="pause-screen" class="screen">
-        <div class="pause__panel">
+      <!-- PAUSE -->
+      <section id="pause-screen" class="screen">
+        <div class="pause">
           <h2 class="pause__title">PAUSED</h2>
-          <div class="pause__note" id="pause-mp-note" style="display:none;">Race continues for other players</div>
-          <button class="btn btn--primary" id="pause-resume-btn">RESUME</button>
-          <button class="btn btn--secondary" id="pause-settings-btn">SETTINGS</button>
-          <button class="btn btn--secondary" id="pause-controls-btn">CONTROLS</button>
-          <button class="btn btn--leave" id="pause-leave-btn">LEAVE RACE</button>
+          <div class="pause__note" id="pause-mp-note">Online race continues for other players.</div>
+          <button class="btn btn--primary" id="pause-resume">RESUME</button>
+          <button class="btn btn--ghost" id="pause-restart">RESTART RACE</button>
+          <button class="btn btn--ghost" id="pause-settings">SETTINGS</button>
+          <button class="btn btn--danger" id="pause-leave">QUIT TO MENU</button>
+          <div class="pause__keys">ESC RESUME · C CAMERA · M MUTE</div>
+        </div>
+      </section>
+
+      <div id="leave-confirm" class="modal" role="dialog" aria-modal="true" aria-labelledby="leave-title">
+        <div class="modal__panel">
+          <h3 id="leave-title">QUIT RACE?</h3>
+          <p>Your current race will be recorded as unfinished.</p>
+          <div class="modal__actions"><button class="btn btn--danger" id="confirm-leave">QUIT</button><button class="btn btn--ghost" id="confirm-stay">KEEP RACING</button></div>
         </div>
       </div>
 
-      <!-- ==================== LEAVE CONFIRMATION ==================== -->
-      <div id="leave-confirm" class="overlay" style="display:none;">
-        <div class="confirm__panel">
-          <h3 class="confirm__title">LEAVE RACE?</h3>
-          <p class="confirm__text">Your progress will be lost.</p>
-          <div class="confirm__actions">
-            <button class="btn btn--leave" id="confirm-leave-btn">LEAVE</button>
-            <button class="btn btn--secondary" id="confirm-stay-btn">STAY</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== RESULTS SCREEN ==================== -->
-      <div id="results-screen" class="screen" style="display:none;">
-        <div class="results__content">
+      <!-- RESULTS -->
+      <section id="results-screen" class="screen">
+        <div class="results">
+          <div class="results__kicker" id="results-kicker">NIGHT CIRCUIT · 2 LAPS</div>
           <h1 class="results__title">RACE COMPLETE</h1>
-          <div class="results__rankings" id="results-rankings">
-            <!-- Populated dynamically -->
-          </div>
+          <div class="results__place" id="results-place">1ST</div>
+          <div class="results__table" id="results-rankings" role="table"></div>
+          <div class="results__stats" id="results-stats"></div>
           <div class="results__actions">
-            <button class="btn btn--primary" id="results-race-again">RACE AGAIN</button>
-            <button class="btn btn--secondary" id="results-lobby-btn" style="display:none;">RETURN TO LOBBY</button>
-            <button class="btn btn--secondary" id="results-menu-btn">MAIN MENU</button>
+            <button class="btn btn--primary btn--lg" id="results-again">RACE AGAIN</button>
+            <button class="btn btn--ghost btn--lg" id="results-menu">MAIN MENU</button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- ==================== DISCONNECTED ==================== -->
-      <div id="disconnected-screen" class="screen">
-        <div class="disconnect__panel">
-          <h2 class="disconnect__title">CONNECTION LOST</h2>
-          <p class="disconnect__text" id="disconnect-reason">Lost connection to server.</p>
-          <button class="btn btn--primary" id="disconnect-menu-btn">MAIN MENU</button>
+      <!-- DISCONNECTED / ERROR -->
+      <section id="disconnected-screen" class="screen">
+        <div class="modal__panel modal__panel--center">
+          <h2>CONNECTION LOST</h2>
+          <p id="disconnect-reason">Lost connection to the multiplayer server.</p>
+          <button class="btn btn--primary" id="disconnect-menu">MAIN MENU</button>
         </div>
-      </div>
-
-      <!-- ==================== ERROR SCREEN ==================== -->
-      <div id="error-screen" class="screen">
-        <div class="error__panel">
-          <h2 class="error__title">ERROR</h2>
-          <p class="error__text" id="error-text">An unexpected error occurred.</p>
-          <button class="btn btn--primary" id="error-retry-btn">RETRY</button>
+      </section>
+      <section id="error-screen" class="screen">
+        <div class="modal__panel modal__panel--center">
+          <h2>ERROR</h2>
+          <p id="error-text">An unexpected error occurred.</p>
+          <button class="btn btn--primary" id="error-retry">RELOAD</button>
         </div>
-      </div>
+      </section>
 
-      <!-- ==================== NOTIFICATION TOAST ==================== -->
-      <div class="notification" id="notification-toast" style="display:none;">
-        <span id="notification-text"></span>
-      </div>
-
+      <div class="toasts" id="toasts" aria-live="polite"></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-

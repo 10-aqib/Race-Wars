@@ -6,8 +6,20 @@
 export interface PlayerStats {
   racesPlayed: number;
   wins: number;
-  bestDistance: number;
-  bestSpeed: number;
+  podiums: number;
+  bestDistance: number;   // metres in a single race (kept for older saves)
+  bestSpeed: number;      // km/h
+  bestLap: number;        // seconds, 0 = none
+  totalDistance: number;  // metres
+}
+
+export interface RaceRecord {
+  position: number;
+  racers: number;
+  distance: number;   // metres driven
+  topSpeedKmh: number;
+  bestLap: number;
+  finished: boolean;
 }
 
 const STATS_KEY = 'raceWarsStats';
@@ -15,8 +27,11 @@ const STATS_KEY = 'raceWarsStats';
 const DEFAULT_STATS: PlayerStats = {
   racesPlayed: 0,
   wins: 0,
+  podiums: 0,
   bestDistance: 0,
   bestSpeed: 0,
+  bestLap: 0,
+  totalDistance: 0,
 };
 
 export class ProfileManager {
@@ -50,11 +65,14 @@ export class ProfileManager {
     return { ...this.stats };
   }
 
-  public recordRace(distance: number, topSpeed: number, isWin: boolean): void {
+  public recordRace(r: RaceRecord): void {
     this.stats.racesPlayed++;
-    if (isWin) this.stats.wins++;
-    if (distance > this.stats.bestDistance) this.stats.bestDistance = Math.round(distance);
-    if (topSpeed > this.stats.bestSpeed) this.stats.bestSpeed = Math.round(topSpeed);
+    if (r.finished && r.position === 1 && r.racers > 1) this.stats.wins++;
+    if (r.finished && r.position <= 3 && r.racers > 1) this.stats.podiums++;
+    if (r.distance > this.stats.bestDistance) this.stats.bestDistance = Math.round(r.distance);
+    if (r.topSpeedKmh > this.stats.bestSpeed) this.stats.bestSpeed = Math.round(r.topSpeedKmh);
+    if (r.bestLap > 0 && (!this.stats.bestLap || r.bestLap < this.stats.bestLap)) this.stats.bestLap = r.bestLap;
+    this.stats.totalDistance += Math.round(r.distance);
     this.save();
   }
 

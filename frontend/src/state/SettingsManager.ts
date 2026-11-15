@@ -10,8 +10,8 @@ export interface GameSettings {
   speedUnit: 'kmh' | 'mph';
   minimap: boolean;
 
-  // Controls
-  controlPreset: 'WASD' | 'ARROWS';
+  // Camera
+  cameraMode: 'chase' | 'close' | 'hood';
 
   // Graphics
   qualityPreset: 'low' | 'medium' | 'high';
@@ -25,6 +25,13 @@ export interface GameSettings {
   engineVolume: number;
   effectsVolume: number;
   uiVolume: number;
+  muted: boolean;
+
+  // Race setup
+  laps: number;
+  difficulty: 'easy' | 'normal' | 'hard';
+  traffic: 'off' | 'light' | 'normal';
+  raceMode: 'race' | 'free';
 
   // Profile
   playerName: string;
@@ -33,6 +40,7 @@ export interface GameSettings {
 
   // Misc
   introSeen: boolean;
+  introOnStartup: boolean;
 }
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -40,7 +48,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   hudVisible: true,
   speedUnit: 'kmh',
   minimap: true,
-  controlPreset: 'WASD',
+  cameraMode: 'chase',
   qualityPreset: 'medium',
   shadows: true,
   reflections: true,
@@ -50,10 +58,16 @@ const DEFAULT_SETTINGS: GameSettings = {
   engineVolume: 70,
   effectsVolume: 75,
   uiVolume: 50,
+  muted: false,
+  laps: 2,
+  difficulty: 'normal',
+  traffic: 'light',
+  raceMode: 'race',
   playerName: '',
   selectedColor: 'red',
   selectedCarId: 'vortex_r',
   introSeen: false,
+  introOnStartup: true,
 };
 
 const STORAGE_KEY = 'raceWarsSettings';
@@ -71,8 +85,12 @@ export class SettingsManager {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Merge with defaults to handle new keys
-        return { ...DEFAULT_SETTINGS, ...parsed };
+        // Merge with defaults to handle new keys; drop values of the wrong type
+        const merged = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
+        for (const [k, v] of Object.entries(parsed ?? {})) {
+          if (k in DEFAULT_SETTINGS && typeof v === typeof (DEFAULT_SETTINGS as unknown as Record<string, unknown>)[k]) merged[k] = v;
+        }
+        return merged as unknown as GameSettings;
       }
     } catch {
       // Invalid stored data, use defaults

@@ -7,20 +7,15 @@ export type GameState =
   | 'LOADING'
   | 'INTRO'
   | 'HOME'
-  | 'MODE_SELECT'
-  | 'MULTIPLAYER'
-  | 'CREATE_ROOM'
-  | 'JOIN_ROOM'
-  | 'LOBBY'
+  | 'RACE_LOBBY'
   | 'GARAGE'
-  | 'CAR_SELECTION'
-  | 'SETTINGS'
   | 'PROFILE'
+  | 'SETTINGS'
+  | 'MULTIPLAYER'
+  | 'LOBBY'
   | 'COUNTDOWN'
   | 'RACING'
   | 'PAUSED'
-  | 'CRASHED'
-  | 'RESPAWNING'
   | 'FINISHED'
   | 'RESULTS'
   | 'DISCONNECTED'
@@ -71,6 +66,10 @@ export class StateManager {
   }
 
   public goBack(): void {
+    // Never step back into transient gameplay screens
+    while (this.stateHistory.length > 1 && ['COUNTDOWN', 'RACING', 'PAUSED', 'FINISHED', 'RESULTS', 'INTRO', 'LOADING'].includes(this.stateHistory[this.stateHistory.length - 2])) {
+      this.stateHistory.splice(this.stateHistory.length - 2, 1);
+    }
     if (this.stateHistory.length > 1) {
       this.stateHistory.pop(); 
       const prevState = this.stateHistory[this.stateHistory.length - 1];
@@ -88,7 +87,12 @@ export class StateManager {
   }
 
   public isGameplay(): boolean {
-    return this.is('COUNTDOWN', 'RACING', 'PAUSED', 'CRASHED', 'RESPAWNING', 'FINISHED');
+    return this.is('COUNTDOWN', 'RACING', 'PAUSED', 'FINISHED');
+  }
+
+  /** Replace the current history entry (used for transient screens such as countdown → racing). */
+  public resetHistory(base: GameState): void {
+    this.stateHistory = [base];
   }
 }
 
