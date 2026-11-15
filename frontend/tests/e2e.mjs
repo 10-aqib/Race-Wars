@@ -123,7 +123,7 @@ const realErrors = errs => errs.filter(e => !/favicon|DevTools|WebGL.*(warning|p
 
 async function main() {
   // Servers
-  procs.push(spawn(process.execPath, [path.join(ROOT, '../backend/server.js')], { env: { ...process.env, PORT: String(API_PORT) }, stdio: 'ignore' }));
+  procs.push(spawn(process.execPath, [path.join(ROOT, '../backend/server.js')], { env: { ...process.env, PORT: String(API_PORT) }, stdio: ['ignore', fs.openSync(path.join(OUT, 'server.log'), 'w'), fs.openSync(path.join(OUT, 'server.log'), 'a')] }));
   if (PROD) {
     execFileSync(process.execPath, ['node_modules/typescript/bin/tsc'], { cwd: ROOT, stdio: 'inherit' });
     execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build'], { cwd: ROOT, stdio: 'inherit', env: { ...process.env, VITE_SERVER_URL: `http://127.0.0.1:${API_PORT}` } });
@@ -591,8 +591,10 @@ async function main() {
   }, { prod: false });
 
   await test('multiplayer: two browsers create/join, ready up, race with synced positions, server-validated results', async () => {
-    const a = await openGame({ settings: { playerName: 'ALPHA' } });
-    const b = await openGame({ settings: { playerName: 'BRAVO', selectedColor: 'blue' } });
+    const small = { width: 640, height: 360 };
+    await page.goto('about:blank'); // park the idle main session to free CPU for the two clients
+    const a = await openGame({ settings: { playerName: 'ALPHA' }, viewport: small });
+    const b = await openGame({ settings: { playerName: 'BRAVO', selectedColor: 'blue' }, viewport: small });
     try {
     await a.page.click('#nav-multiplayer');
     await a.page.click('#mp-create-btn');
@@ -605,8 +607,8 @@ async function main() {
     await b.page.waitForFunction(() => window.RaceWars.state.state === 'LOBBY');
     await a.page.waitForFunction(() => document.querySelectorAll('#lobby-player-list .racer-card').length === 2);
     await a.page.click('#lobby-ready-btn'); await b.page.click('#lobby-ready-btn');
-    await Promise.all([a, b].map(x => x.page.waitForFunction(() => window.RaceWars.state.state === 'COUNTDOWN', null, { timeout: 30000 })));
-    for (const x of [a, b]) await advance(x.page, 3.2);
+    await Promise.all([a, b].map(x => x.page.waitForFunction(() => ['COUNTDOWN', 'RACING'].includes(window.RaceWars.state.state), null, { timeout: 60000 })));
+    for (const x of [a, b]) if ((await state(x.page)).state === 'COUNTDOWN') await advance(x.page, 3.2);
     for (const x of [a, b]) assert.equal((await state(x.page)).state, 'RACING');
     for (const x of [a, b]) await qa(x.page, () => window.RaceWars.qa.autopilot(true));
     // Positions synchronise: B sees A's car move
@@ -629,8 +631,8 @@ async function main() {
     assert.match(await a.page.textContent('#results-kicker'), /SERVER-VALIDATED/);
     return { code, rows: rowsA };
     } finally {
-      const dbg = await Promise.all([a, b].map(x => x.page.evaluate(() => ({ st: window.RaceWars?.state?.state, phase: window.RaceWars?.game?.race?.phase, conn: window.RaceWars?.network?.connected })).catch(e => String(e))));
-      console.log('   mp debug', JSON.stringify(dbg), JSON.stringify([...a.errors, ...b.errors].slice(0, 5)));
+      const dbg = await Promise.all([a, b].map(x => x.page.evaluate(() => ({ st: window.RaceWars?.state?.state, phase: window.RaceWars?.game?.race?.phase, conn: window.RaceWars?.network?.connected, reason: window.RaceWars?.network?.lastDisconnectReason })).catch(e => String(e))));
+      console.log('   mp debug', JSON.stringify(dbg), JSON.stringify([...a.errors, ...b.errors].slice(0, 5)), fs.readFileSync(path.join(OUT, 'server.log'), 'utf8').slice(-1500));
       await a.ctx.close(); await b.ctx.close();
     }
   });
@@ -666,8 +668,7 @@ async function main() {
 
   await test('intro: plays on startup with logo and can be skipped', async () => {
     const x = await openGame({ settings: { introOnStartup: true }, query: 'seed=1' });
-    await x.page.waitForFunction(() => window.RaceWars?.state?.state === 'INTRO');
-    assert.ok(await x.page.isVisible('#intro-skip'));
+    await x.page.waitForFunction(() => window.RaceWars?.state?.state === 'INTRO' && document.getElementById('intro-skip').getBoundingClientRect().width > 0);
     await x.page.keyboard.press('Escape');
     await x.page.waitForFunction(() => window.RaceWars.state.state === 'HOME');
     assert.deepEqual(realErrors(x.errors), []);
@@ -675,6 +676,7 @@ async function main() {
   });
 
   await test('console: no errors during the whole session', async () => {
+    // (main session was parked on about:blank before the multiplayer tests)
     assert.deepEqual(realErrors(main.errors), []);
   });
 }

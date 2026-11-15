@@ -102,18 +102,7 @@ io.on('connection', socket => {
     const player = room && room.players[socket.id];
     if (!room || !room.isPlaying || !room.startedAt || !player || player.finished) return;
 
-    // Server-side progress: never more than is physically reachable since the start
-    // signal, and never a jump larger than one update interval allows.
-    if (Number.isFinite(state.progress)) {
-      const now = Date.now();
-      const elapsed = (now - room.startedAt) / 1000;
-      const sinceLast = Math.max(0.1, (now - (player.lastUpdateAt || room.startedAt)) / 1000);
-      const reachable = Math.min(MAX_SPEED_MS * elapsed + PROGRESS_SLACK_M, player.progress + MAX_SPEED_MS * sinceLast + PROGRESS_SLACK_M);
-      const claimed = Math.min(state.progress, RACE_DISTANCE_M + 50);
-      if (claimed > reachable) { player.progress = Math.max(player.progress, reachable); player.rejected++; }
-      else player.progress = Math.max(player.progress - 60, claimed);
-      player.lastUpdateAt = now;
-    }
+    if (Number.isFinite(state.progress)) applyProgress(room, player, state.progress);
 
     const vx = Number.isFinite(state.vx) ? Math.max(-MAX_SPEED_MS, Math.min(MAX_SPEED_MS, state.vx)) : 0;
     const vz = Number.isFinite(state.vz) ? Math.max(-MAX_SPEED_MS, Math.min(MAX_SPEED_MS, state.vz)) : 0;
@@ -123,11 +112,13 @@ io.on('connection', socket => {
     });
   });
 
-  socket.on('finish_race', () => {
+  socket.on('finish_race', data => {
     const code = playerRoomMap[socket.id];
     const room = rooms[code];
     const player = room && room.players[socket.id];
     if (!room || !room.isPlaying || !room.startedAt || !player || player.finished) return;
+    // The claim goes through the same physical bound as position updates (updates are volatile and may be dropped)
+    if (data && Number.isFinite(data.progress)) applyProgress(room, player, data.progress);
     if (player.progress < RACE_DISTANCE_M - 30) {
       socket.emit('error_msg', 'Finish rejected: race distance not completed');
       return;
@@ -139,6 +130,21 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => handleLeaveRoom(socket));
 });
+
+/**
+ * Server-side progress: never more than is physically reachable since the start
+ * signal, and never a jump larger than the time since the last accepted claim allows.
+ */
+function applyProgress(room, player, claimedRaw) {
+  const now = Date.now();
+  const elapsed = (now - room.startedAt) / 1000;
+  const sinceLast = Math.max(0.1, (now - (player.lastUpdateAt || room.startedAt)) / 1000);
+  const reachable = Math.min(MAX_SPEED_MS * elapsed + PROGRESS_SLACK_M, player.progress + MAX_SPEED_MS * sinceLast + PROGRESS_SLACK_M);
+  const claimed = Math.min(claimedRaw, RACE_DISTANCE_M + 50);
+  if (claimed > reachable) { player.progress = Math.max(player.progress, reachable); player.rejected++; }
+  else player.progress = Math.max(player.progress - 60, claimed);
+  player.lastUpdateAt = now;
+}
 
 function handleLeaveRoom(socket) {
   const code = playerRoomMap[socket.id];

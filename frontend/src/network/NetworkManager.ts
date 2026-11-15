@@ -51,6 +51,7 @@ export class NetworkManager {
   public onRaceStart?: () => void;
   public onRaceFinished?: (rankings: RankingEntry[]) => void;
   public connected = false;
+  public lastDisconnectReason = '';
   
   public onError?: (msg: string) => void;
   public onRoomLeft?: () => void;
@@ -63,6 +64,7 @@ export class NetworkManager {
 
     this.socket = io(backendUrl, {
       autoConnect: false, // We connect when needed
+      transports: ['websocket', 'polling'], // WebSocket first: survives brief main-thread stalls better than long-polling
       reconnection: true,
       reconnectionAttempts: 5,
     });
@@ -86,8 +88,12 @@ export class NetworkManager {
       this.connected = true;
     });
 
-    this.socket.on('disconnect', () => {
+    this.socket.on('disconnect', (reason: string) => {
       this.connected = false;
+      this.lastDisconnectReason = reason;
+      console.warn('[RaceWars] Disconnected from server:', reason);
+      const el = document.getElementById('disconnect-reason');
+      if (el) el.textContent = reason === 'io server disconnect' ? 'The server closed the connection.' : `Lost connection to the multiplayer server (${reason}).`;
       const wasInRoom = this.currentRoom !== null;
       this.currentRoom = null;
       this.onRoomLeft?.();
