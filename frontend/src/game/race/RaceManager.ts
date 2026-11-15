@@ -142,7 +142,7 @@ export class RaceManager {
 
   /** 3, 2, 1, then 0 for "GO" (shown briefly after start), or null. */
   get countdownValue(): number | null {
-    if (this.phase === 'countdown') return Math.ceil(this.countdownTime);
+    if (this.phase === 'countdown') return Math.ceil(this.countdownTime - 1e-6);
     if (this.phase === 'racing' && this.raceTime < 0.8) return 0;
     return null;
   }
@@ -193,7 +193,9 @@ export class RaceManager {
 
     if (this.phase === 'finishing') {
       this.finishTimer += dt;
-      if (this.finishTimer > FINISH_GRACE || this.racers.every(r => r.finished || r.spec.kind === 'remote')) {
+      const online = this.racers.some(r => r.spec.kind === 'remote');
+      // Online races are closed by the server's race_finished message instead
+      if (!online && (this.finishTimer > FINISH_GRACE || this.racers.every(r => r.finished))) {
         this.phase = 'complete';
         this.onComplete?.();
       }
@@ -205,7 +207,8 @@ export class RaceManager {
     const s = r.body.track.s;
     const ds = t.deltaS(r.lastS, s);
     r.lastS = s;
-    if (Math.abs(ds) < 40) r.progress += ds; // larger jumps are teleports (resets keep progress)
+    // Larger jumps are teleports (resets keep progress); progress is frozen once finished
+    if (Math.abs(ds) < 40 && !r.finished) r.progress += ds;
     const sim = r.body.sim;
     r.topSpeed = Math.max(r.topSpeed, sim.forwardSpeed);
     const err = Math.abs(wrapAngle(sim.heading - t.headingAt(s)));

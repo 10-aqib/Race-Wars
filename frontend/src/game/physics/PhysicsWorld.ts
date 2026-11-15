@@ -33,7 +33,7 @@ export interface ContactEvent {
 const OFFROAD: SurfaceInfo = { grip: 0.72, rolling: 0.05 };
 const ROAD: SurfaceInfo = { grip: 1, rolling: 0 };
 const BARRIER_RESTITUTION = 0.18;
-const BARRIER_FRICTION = 0.3;
+const BARRIER_FRICTION = 0.12;
 const CAR_RESTITUTION = 0.25;
 const CAR_FRICTION = 0.2;
 
@@ -127,7 +127,6 @@ export class PhysicsWorld {
     const rt = raz * tx - rax * tz;
     const jt = clamp(-vt / (1 / sim.mass + (rt * rt) / sim.inertia), -BARRIER_FRICTION * j, BARRIER_FRICTION * j);
     sim.applyImpulse(tx * jt, tz * jt, wx, wz);
-    sim.yawRate *= 0.85;
     if (j > sim.mass * 0.8) { this.events.push({ a: body, b: null, impulse: j, x: wx, z: wz }); body.lastImpact = 0; }
   }
 

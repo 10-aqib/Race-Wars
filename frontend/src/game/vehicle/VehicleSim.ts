@@ -175,7 +175,7 @@ export class VehicleSim {
     const Nr = m * G * a / L + transfer;
     const muF = c.grip * surface.grip;
     const muR = c.grip * c.rearGripBias * surface.grip * (input.handbrake ? c.handbrakeGrip : 1);
-    const rearDrive = Math.min(Math.abs(drive), muR * Nr);
+    const rearDrive = 0.55 * Math.min(Math.abs(drive), muR * Nr); // partial friction-circle coupling: power oversteer without snap spins
     const rearLatMax = Math.sqrt(Math.max((muR * Nr) ** 2 - rearDrive ** 2, (0.25 * muR * Nr) ** 2));
     const uEff = Math.max(absU, 4);
     const r = this.yawRate;

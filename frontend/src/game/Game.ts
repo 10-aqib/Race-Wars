@@ -20,6 +20,7 @@ import { profile } from '../state/ProfileManager';
 import { Hud, type HudFrame } from '../ui/Hud';
 import type { NetworkManager, PlayerInfo, PlayerState } from '../network/NetworkManager';
 import type { Body } from './physics/PhysicsWorld';
+import { VehicleSim } from './vehicle/VehicleSim';
 
 /**
  * Race Wars — game orchestrator.
@@ -132,8 +133,25 @@ export class Game {
       this.city.scene.environment = this.nightEnv;
       this.city.scene.add(this.smoke.mesh, this.sparks.mesh);
       this.city.setQuality(this.quality, settings.get('shadows'));
+      this.prewarmCity(this.city);
     }
     return this.city;
+  }
+
+  /** Compile the race scene's shaders in the background so starting a race does not stall. */
+  private prewarmCity(city: CityScene): void {
+    const car = new CarView({ paint: 0xb3121b, wing: true, headlightBeam: true });
+    const traffic = new TrafficView(1);
+    car.ready.then(() => {
+      const p = this.track.pointAt(0, 0);
+      car.setPose(p.x, p.z, this.track.headingAt(0));
+      traffic.group.visible = true;
+      traffic.group.position.set(p.x, 0, p.z - 20);
+      city.scene.add(car.group, traffic.group);
+      this.camera.update(p.x, p.z, this.track.headingAt(0), new VehicleSim(this.selectedConfig()), 0);
+      const done = () => { if (!this.inRace) { car.dispose(); traffic.dispose(); } else { car.group.removeFromParent(); traffic.group.removeFromParent(); } };
+      this.renderer.compileAsync(city.scene, this.camera.camera).then(done, done);
+    });
   }
 
   // ── Menu cars ──────────────────────────────────────────────────────────────
@@ -177,6 +195,7 @@ export class Game {
       if (state !== 'INTRO') audioManager.startMenuMusic();
     }
     if (state === 'PAUSED') { audioManager.stopEngine(); this.input.clearAll(); }
+    if (state === 'DISCONNECTED' && this.inRace) this.endRace();
     if (state === 'RACING' && old === 'PAUSED') { audioManager.startEngine(); this.lastTime = performance.now(); }
     if (state === 'COUNTDOWN' && old !== 'PAUSED') this.lastCountdown = null;
   }

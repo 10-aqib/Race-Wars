@@ -22,7 +22,7 @@ const shot = (px: number, py: number, pz: number, tx: number, ty: number, tz: nu
 const SHOTS: Record<Exclude<GarageMode, 'intro'>, Shot> = {
   home: shot(-2.3, 1.15, 7.0, -1.25, 0.72, 0, 38),
   lobby: shot(0, 2.6, 12.5, 0, 0.8, -0.6, 42),
-  select: shot(0, 1.9, 8.2, 0, 0.75, 0, 38),
+  select: shot(1.4, 2.3, 9.6, 1.1, 0.7, 0, 36),
   profile: shot(4.6, 1.6, 6.8, 0.4, 0.8, 0, 40),
   settings: shot(-5.5, 2.2, 6.5, 0, 0.8, -1, 44),
 };
@@ -61,7 +61,7 @@ export class GarageScene {
     this.buildLights();
     this.buildProps();
     this.platform = new THREE.Group();
-    this.platformRing = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2.4 });
+    this.platformRing = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.1 });
     this.buildPlatform();
 
     this.haze = new ParticleSystem({ max: 90, texture: smokeTexture(), color: 0x9aa0aa, drag: 0.2, grow: 0.12, fade: 1.4 });
@@ -186,11 +186,11 @@ export class GarageScene {
     top.position.y = 0.11; top.receiveShadow = true; g.add(top);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(3.38, 0.035, 8, 96).rotateX(Math.PI / 2), this.platformRing);
     ring.position.y = 0.2; g.add(ring);
-    const inner = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.015, 6, 96).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff1010, emissiveIntensity: 2 }));
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.015, 6, 96).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff1010, emissiveIntensity: 1.2 }));
     inner.position.y = 0.225; g.add(inner);
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0xdfe6ff, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0xdfe6ff, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false }));
     glow.position.y = 0.01; g.add(glow);
-    const spot = new THREE.SpotLight(0xffffff, 220, 20, 0.5, 0.5, 1.5);
+    const spot = new THREE.SpotLight(0xffffff, 55, 20, 0.5, 0.6, 1.5);
     spot.position.set(0, 8, 0.5); spot.target.position.set(0, 0, 0); g.add(spot, spot.target);
     g.visible = false;
     this.scene.add(g);
@@ -287,7 +287,7 @@ export class GarageScene {
     if (Math.random() < dt * 2.5) this.emitHaze();
     this.haze.update(dt);
     this.burst.update(dt);
-    this.platformRing.emissiveIntensity = 2 + Math.sin(this.time * 2) * 0.5;
+    this.platformRing.emissiveIntensity = 1 + Math.sin(this.time * 2) * 0.25;
     if (this.mode === 'select') { this.heroSpin += dt * 0.25; this.layout(); }
     if (this.mode !== 'intro' || this.introTime < 4 || this.introTime > 4.4) this.hero?.idle(dt);
     this.rivals.forEach(r => r.idle(dt));
