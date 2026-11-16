@@ -69,6 +69,10 @@ export class VehicleSim {
   throttle = 0;
   wheelRotation = 0; // rad
   distanceTravelled = 0;
+  /** 0..1 drift blend (W+S power-drift or handbrake at speed) */
+  drift = 0;
+  /** Body slip angle in rad: angle between heading and travel direction (positive = sliding left). */
+  slipAngle = 0;
 
   constructor(config: CarConfig) {
     this.config = config;
@@ -135,13 +139,22 @@ export class VehicleSim {
     let brakeForce = 0; // magnitude, opposes motion
     let reversing = false;
 
+    // ── Drift: throttle + brake together (power drift) or handbrake at speed breaks the rear loose
+    const powerDrift = throttle > 0.5 && brake > 0.5 && u > 9;
+    const wantDrift = powerDrift || (input.handbrake && u > 9);
+    this.drift += ((wantDrift ? 1 : 0) - this.drift) * Math.min(1, (wantDrift ? 7 : 2.4) * dt);
+    if (this.drift < 0.002) this.drift = 0;
+    const drift = this.drift;
+
     if (throttle > 0 && u > -0.5) {
       const power = c.enginePowerKW * 1000;
       drive = throttle * Math.min(m * c.maxDriveAccel, power / Math.max(absU, 1)) * shiftCut;
     } else if (throttle > 0) {
       brakeForce = throttle * c.brakeDecel * m; // throttle while rolling backwards brakes first
     }
-    if (brake > 0) {
+    if (powerDrift) {
+      drive *= 0.92; // brake pedal acts as a clutch kick: power stays on, no braking
+    } else if (brake > 0) {
       if (u > 0.5) brakeForce += brake * c.brakeDecel * m;
       else if (throttle === 0) {
         reversing = true;
@@ -156,12 +169,14 @@ export class VehicleSim {
       drive += m * c.nitroAccel;
       this.nitro = Math.max(0, this.nitro - dt);
     } else if (!input.nitro) {
-      this.nitro = Math.min(c.nitroCapacity, this.nitro + c.nitroRecharge * dt);
+      // Drifting refills nitro faster (rewarding a held slide)
+      const driftBonus = 2.5 * this.drift * clamp01(Math.abs(this.slipAngle) / 0.3);
+      this.nitro = Math.min(c.nitroCapacity, this.nitro + c.nitroRecharge * (1 + driftBonus) * dt);
     }
     const speedCap = c.topSpeed * (this.boosting ? 1 + c.nitroTopSpeedBonus : 1);
     if (u > speedCap && drive > 0) drive = 0;
 
-    if (input.handbrake && absU > 0.5) brakeForce += m * 3.5;
+    if (input.handbrake && absU > 0.5) brakeForce += m * (throttle > 0.5 ? 0.8 : 3.0);
     if (throttle === 0 && !reversing && absU > 0.5) brakeForce += m * 0.9 * (0.4 + 0.6 * Math.max(0, this.rpmFactor)); // engine braking
 
     const resist = this.dragCoef * u * absU + (c.rollingResistance + surface.rolling) * m * G * Math.sign(u) * Math.min(1, absU);
@@ -174,8 +189,8 @@ export class VehicleSim {
     const Nf = m * G * b / L - transfer;
     const Nr = m * G * a / L + transfer;
     const muF = c.grip * surface.grip;
-    const muR = c.grip * c.rearGripBias * surface.grip * (input.handbrake ? c.handbrakeGrip : 1);
-    const rearDrive = 0.55 * Math.min(Math.abs(drive), muR * Nr); // partial friction-circle coupling: power oversteer without snap spins
+    const muR = c.grip * c.rearGripBias * surface.grip * (1 + (c.handbrakeGrip + 0.06 - 1) * drift);
+    const rearDrive = (0.55 + 0.4 * drift) * Math.min(Math.abs(drive), muR * Nr); // partial friction-circle coupling: power oversteer without snap spins
     const rearLatMax = Math.sqrt(Math.max((muR * Nr) ** 2 - rearDrive ** 2, (0.25 * muR * Nr) ** 2));
     const uEff = Math.max(absU, 4);
     const r = this.yawRate;
@@ -191,8 +206,10 @@ export class VehicleSim {
     }
 
     const axLocal = (Fx - Fyf * Math.sin(delta)) / m;
-    const ayLocal = (Fyf * Math.cos(delta) + Fyr) / m;
-    const yawAccel = (a * Fyf * Math.cos(delta) - b * Fyr) / this.inertia;
+    // In a drift the arcade drift controller (below) shares authority with the tyre model
+    const tyreShare = 1 - 0.65 * drift;
+    const ayLocal = ((Fyf * Math.cos(delta) + Fyr) / m) * tyreShare;
+    const yawAccel = ((a * Fyf * Math.cos(delta) - b * Fyr) / this.inertia) * tyreShare;
 
     this.vx += (fx * axLocal + lx * ayLocal) * dt;
     this.vz += (fz * axLocal + lz * ayLocal) * dt;
@@ -204,9 +221,27 @@ export class VehicleSim {
     const k = u < 0 ? 0 : clamp01((Math.abs(u) - 2) / 6);
     const kinematicYaw = u * Math.tan(delta) / L;
     this.yawRate = kinematicYaw + (this.yawRate - kinematicYaw) * k;
-    if (!input.handbrake) this.yawRate += (kinematicYaw - this.yawRate) * Math.min(1, STABILITY_ASSIST * dt);
+    this.yawRate += (kinematicYaw - this.yawRate) * Math.min(1, STABILITY_ASSIST * (1 - drift) * dt);
     vLat *= 1 - (1 - k) * Math.min(1, 12 * dt);
-    if (!input.handbrake) vLat *= 1 - Math.min(1, 0.6 * dt); // residual scrub so slides settle
+    vLat *= 1 - Math.min(1, 0.6 * (1 - drift) * dt); // residual scrub so slides settle
+
+    // ── Drift controller: steering sets the rotation rate, travel direction follows the nose
+    // with limited traction, slip angle capped so the car holds a slide instead of spinning.
+    if (drift > 0 && u > 4) {
+      const steerIn = Math.max(-1, Math.min(1, input.steer));
+      const beta = Math.atan2(vLat, u);
+      // Rotation rate scaled to speed (≈ corner-sized arcs), plus a little extra to build angle
+      const yawTarget = steerIn * (7 / Math.max(u, 8) + 0.22) + beta * 0.35;
+      this.yawRate += (yawTarget - this.yawRate) * Math.min(1, 3.2 * drift * dt);
+      // Travel direction follows the nose at a rate proportional to slip: steady state β ≈ yaw / kβ
+      const kBeta = 1.15 + (1 - drift) * 6;
+      const maxBeta = 0.85;
+      let turn = Math.min(Math.abs(beta), kBeta * Math.abs(beta) * dt);
+      if (Math.abs(beta) > maxBeta) turn += Math.abs(beta) - maxBeta;
+      const nb = beta - Math.sign(beta) * turn;
+      const sp = Math.hypot(u, vLat) * (1 - 0.35 * Math.abs(Math.sin(beta)) * dt);
+      u = Math.cos(nb) * sp; vLat = Math.sin(nb) * sp;
+    }
 
     // Braking can stop the car but never reverse its direction within a step
     if (brakeForce > 0 && uBefore !== 0 && Math.sign(u) !== Math.sign(uBefore) && Math.abs(drive) < 1) u = 0;
@@ -224,12 +259,13 @@ export class VehicleSim {
     this.latAccel = ayLocal;
     this.forwardSpeed = u;
     this.lateralSpeed = vLat;
-    this.braking = (brake > 0 && u > 0.5) || (throttle > 0 && u < -0.5) || (input.handbrake && Math.abs(u) > 0.5);
+    this.slipAngle = u > 1 ? Math.atan2(vLat, u) : 0;
+    this.braking = (brake > 0 && u > 0.5 && !powerDrift) || (throttle > 0 && u < -0.5) || (input.handbrake && Math.abs(u) > 0.5);
     this.wheelRotation += (u / WHEEL_RADIUS) * dt;
     this.distanceTravelled += Math.abs(u) * dt;
     const slide = clamp01((Math.abs(vLat) - 1.2) / 6);
     const spin = throttle > 0.5 && u < 9 && u >= 0 ? clamp01((m * c.maxDriveAccel * throttle) / (muR * Nr) - 0.75) * clamp01(1 - u / 9) : 0;
-    const hb = input.handbrake && Math.abs(u) > 4 ? 0.7 : 0;
+    const hb = Math.max(input.handbrake && Math.abs(u) > 4 ? 0.7 : 0, drift * clamp01(Math.abs(this.slipAngle) / 0.25));
     this.skid = Math.max(slide, spin, hb, clamp01((this.rearSlip - 0.09) / 0.2));
     this.updateGearbox(u, throttle, reversing);
   }

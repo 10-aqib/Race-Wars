@@ -63,6 +63,9 @@ export class Game {
   private inRace = false;
   private quality: GameSettings['qualityPreset'] = 'medium';
   private lastGear = 0;
+  private driftScore = 0;
+  private driftTime = 0;
+  private driftCooldown = 0;
   readonly vehicleAudio = new VehicleAudio(audioManager);
   private hornCooldown = new Map<string, number>();
   private remoteTargets = new Map<string, PlayerState & { t: number }>();
@@ -554,8 +557,27 @@ export class Game {
     num.classList.remove('countdown__number--pop'); void num.offsetWidth; num.classList.add('countdown__number--pop');
   }
 
+  /** Drift scoring: points from speed × slip angle while sliding; banked when the slide ends. */
+  private updateDrift(player: Racer, dt: number): void {
+    const sim = player.body.sim;
+    const sliding = sim.drift > 0.5 && Math.abs(sim.slipAngle) > 0.18 && sim.forwardSpeed > 12 && gameState.is('RACING');
+    if (sliding) {
+      this.driftTime += dt;
+      this.driftScore += sim.forwardSpeed * Math.abs(sim.slipAngle) * dt * 12;
+      this.driftCooldown = 0.6;
+      if (this.driftTime > 0.4) this.hud.message(`DRIFT  ${Math.round(Math.abs(sim.slipAngle) * 57.3)}°  +${Math.round(this.driftScore)}`, 0.3, 'red');
+    } else if (this.driftScore > 0) {
+      this.driftCooldown -= dt;
+      if (this.driftCooldown <= 0) {
+        if (this.driftTime > 0.8) this.hud.message(`DRIFT BONUS  ${Math.round(this.driftScore)}`, 1.6);
+        this.driftScore = 0; this.driftTime = 0;
+      }
+    }
+  }
+
   private updateHud(player: Racer, dt: number): void {
     const sim = player.body.sim;
+    if (dt > 0) this.updateDrift(player, dt);
     const mph = settings.get('speedUnit') === 'mph';
     const speed = Math.abs(sim.forwardSpeed) * (mph ? 2.23694 : 3.6);
     const race = this.race;

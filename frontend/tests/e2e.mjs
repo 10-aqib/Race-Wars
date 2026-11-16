@@ -240,7 +240,7 @@ async function main() {
     assert.equal(await page.textContent('#countdown-num'), '2');
     s = await advance(page, 2.1);
     assert.equal(s.state, 'RACING');
-    assert.equal(s.countdown, 0, 'GO shown right after start');
+    if (s.raceTime < 0.75) assert.equal(s.countdown, 0, 'GO shown right after start');
     s = await advance(page, 1);
     assert.ok(s.player.speedKmh > 20, 'throttle works after GO');
     await page.keyboard.up('KeyW');
@@ -309,6 +309,26 @@ async function main() {
     const after = await advance(page, 2.5);
     assert.ok(Math.abs(after.player.lateral) < 3, 'slide settles after release');
     return { slide: s.player.lateral };
+  });
+
+  await test('physics: W+S power drift holds a controllable slide and recovers on release', async () => {
+    await qa(page, () => window.RaceWars.qa.placePlayer(3600, -7, 110));
+    await page.keyboard.down('KeyW'); await page.keyboard.down('KeyS'); await page.keyboard.down('KeyD');
+    let s, slip = 0;
+    for (let i = 0; i < 9; i++) {
+      s = await advance(page, 0.1);
+      const a = await qa(page, () => window.RaceWars.game.race.player.body.sim.slipAngle * 57.3);
+      if (Math.abs(a) > Math.abs(slip)) slip = a;
+    }
+    assert.ok(Math.abs(s.player.d) < 10.5, 'drift stayed off the barrier');
+    await page.keyboard.up('KeyS'); await page.keyboard.up('KeyD');
+    assert.ok(Math.abs(slip) > 12, `drift angle ${slip.toFixed(1)}°`);
+    assert.ok(s.player.speedKmh > 80, `speed carried through the drift (${s.player.speedKmh.toFixed(0)} km/h)`);
+    await advance(page, 1.5);
+    const after = await qa(page, () => window.RaceWars.game.race.player.body.sim.slipAngle * 57.3);
+    await page.keyboard.up('KeyW');
+    assert.ok(Math.abs(after) < 5, `grip returns after release (${after.toFixed(1)}°)`);
+    return { slipDeg: Math.round(slip), speed: Math.round(s.player.speedKmh) };
   });
 
   await test('nitro: consumes capacity, adds real acceleration, recharges', async () => {

@@ -49,7 +49,8 @@ npm run preview
 | W / ↑ | Accelerate |
 | S / ↓ | Brake, then reverse |
 | A / ← · D / → | Steer |
-| Space | Handbrake |
+| Space | Handbrake (drift entry) |
+| W + S together | Power drift: hold with steering, release to regain grip (drifting refills nitro) |
 | Shift | Nitro |
 | C | Cycle camera (chase / close / hood) |
 | R | Reset onto the track |
