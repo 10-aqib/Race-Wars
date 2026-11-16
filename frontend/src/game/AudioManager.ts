@@ -485,6 +485,11 @@ export class AudioManager {
 
   public get engineActive(): boolean { return this.engineRunning; }
 
+  /** Shared context and mixer buses for the race audio engine (null if Web Audio is unavailable). */
+  public get context(): AudioContext | null { this._ensureContext(); return this.ctx; }
+  public get engineBus(): GainNode { return this.engineGain; }
+  public get effectsBus(): GainNode { return this.effectsGain; }
+
   public resume(): void {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();

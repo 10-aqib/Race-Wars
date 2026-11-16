@@ -14,6 +14,7 @@ import { smokeTexture, glowTexture } from './render/Textures';
 import { preloadCarModel, modelStatus } from './render/CarModel';
 import { CAR_CATALOGUE, PAINT_COLORS, getCarById, type CarConfig } from './CarConfig';
 import { audioManager } from './AudioManager';
+import { VehicleAudio } from './audio/VehicleAudio';
 import { gameState, type GameState } from '../state/StateManager';
 import { settings, type GameSettings } from '../state/SettingsManager';
 import { profile } from '../state/ProfileManager';
@@ -62,7 +63,8 @@ export class Game {
   private inRace = false;
   private quality: GameSettings['qualityPreset'] = 'medium';
   private lastGear = 0;
-  private wasBoosting = false;
+  readonly vehicleAudio = new VehicleAudio(audioManager);
+  private hornCooldown = new Map<string, number>();
   private remoteTargets = new Map<string, PlayerState & { t: number }>();
   private netAccum = 0;
   private finishedHandled = false;
@@ -191,12 +193,12 @@ export class Game {
       if (this.inRace) this.endRace();
       this.garage.setMode(mode, old === 'LOADING' || old === 'RESULTS' || old === 'PAUSED');
       this.input.clearAll();
-      audioManager.stopEngine();
+      this.vehicleAudio.stop();
       if (state !== 'INTRO') audioManager.startMenuMusic();
     }
-    if (state === 'PAUSED') { audioManager.stopEngine(); this.input.clearAll(); }
+    if (state === 'PAUSED') { this.vehicleAudio.stop(); this.input.clearAll(); }
     if (state === 'DISCONNECTED' && this.inRace) this.endRace();
-    if (state === 'RACING' && old === 'PAUSED') { audioManager.startEngine(); this.lastTime = performance.now(); }
+    if (state === 'RACING' && old === 'PAUSED') { this.vehicleAudio.start(); this.lastTime = performance.now(); }
     if (state === 'COUNTDOWN' && old !== 'PAUSED') this.lastCountdown = null;
   }
 
@@ -261,11 +263,12 @@ export class Game {
     this.camera.setMode(settings.get('cameraMode'));
     this.camera.snap();
     this.hud.clear();
-    this.lastGear = 0; this.wasBoosting = false;
+    this.lastGear = 0;
     this.syncViews(1, 0);
     audioManager.stopMusic();
     audioManager.startRaceMusic();
-    audioManager.startEngine();
+    this.vehicleAudio.start();
+    this.hornCooldown.clear();
   }
 
   endRace(): void {
@@ -276,8 +279,7 @@ export class Game {
     this.smoke.clear(); this.sparks.clear();
     this.hud.clear();
     this.inRace = false;
-    audioManager.stopEngine();
-    audioManager.stopBoost();
+    this.vehicleAudio.stop();
   }
 
   restartRace(): void {
@@ -456,7 +458,7 @@ export class Game {
       if (amount < 0.15 || Math.random() > amount * 0.6) continue;
       const fx = sim.forwardX, fz = sim.forwardZ, rx = -fz, rz = fx;
       for (const side of [-1, 1]) {
-        const x = sim.x - fx * 1.35 + rx * side * 0.82, z = sim.z - fz * 1.35 + rz * side * 0.82;
+        const x = sim.x - fx * 1.5 + rx * side * 0.9, z = sim.z - fz * 1.5 + rz * side * 0.9;
         this.smoke.emit(x, 0.25, z, sim.vx * 0.25 + (Math.random() - 0.5), 0.5 + Math.random() * 0.6, sim.vz * 0.25 + (Math.random() - 0.5), 0.9, 0.22 * Math.min(1, amount), 1.4 + Math.random());
       }
     }
@@ -509,12 +511,30 @@ export class Game {
   private updateAudio(player: Racer, paused: boolean): void {
     const sim = player.body.sim;
     if (paused || !gameState.is('RACING', 'COUNTDOWN', 'FINISHED')) return;
-    audioManager.updateVehicleAudio(Math.max(0, sim.rpmFactor), sim.throttle > 0, Math.abs(sim.forwardSpeed), sim.config.topSpeed, sim.braking, sim.skid);
-    if (sim.gear > this.lastGear && this.lastGear >= 1) audioManager.playGearShift();
+    const c = sim.config;
+    this.vehicleAudio.update({
+      rpm: sim.rpm, idleRpm: c.idleRpm, redlineRpm: c.redlineRpm, throttle: sim.throttle,
+      speed: Math.abs(sim.forwardSpeed), topSpeed: c.topSpeed, braking: sim.braking, skid: sim.skid,
+      onShoulder: player.body.onShoulder, boosting: sim.boosting, horn: this.input.horn && !player.finished,
+    }, 1 / 60);
+    if (sim.gear !== this.lastGear && this.lastGear >= 1 && sim.gear >= 1) this.vehicleAudio.gearShift(sim.gear > this.lastGear);
     this.lastGear = sim.gear;
-    if (sim.boosting && !this.wasBoosting) audioManager.startBoost();
-    if (!sim.boosting && this.wasBoosting) audioManager.stopBoost();
-    this.wasBoosting = sim.boosting;
+    // Traffic: spatial engine/road noise, and horns for near misses or contact with the player
+    const cam = this.camera.camera.position;
+    const cars = this.race.traffic.filter(t => t.body.active).map(t => ({ id: t.body.id, x: t.body.sim.x, z: t.body.sim.z, vx: t.body.sim.vx, vz: t.body.sim.vz, speed: Math.abs(t.body.sim.forwardSpeed) }));
+    this.vehicleAudio.updateTraffic(cam.x, cam.z, sim.heading, sim.vx, sim.vz, cars);
+    const now = performance.now();
+    for (const t of this.race.traffic) {
+      if (!t.body.active) continue;
+      const tb = t.body.sim;
+      const dx = tb.x - sim.x, dz = tb.z - sim.z, dist = Math.hypot(dx, dz);
+      const closing = (sim.vx - tb.vx) * dx + (sim.vz - tb.vz) * dz;
+      const nearMiss = dist < 6.5 && closing > 0 && Math.abs(sim.forwardSpeed) - Math.abs(tb.forwardSpeed) > 18;
+      if ((nearMiss || t.body.lastImpact < 0.05) && (this.hornCooldown.get(t.body.id) ?? 0) < now) {
+        this.hornCooldown.set(t.body.id, now + 5000);
+        this.vehicleAudio.trafficHorn((dx * Math.cos(sim.heading) - dz * Math.sin(sim.heading)) / Math.max(1, dist), dist);
+      }
+    }
     const cd = this.race.countdownValue;
     if (cd !== this.lastCountdown) {
       if (cd !== null) audioManager.playCountdown(cd === 0);

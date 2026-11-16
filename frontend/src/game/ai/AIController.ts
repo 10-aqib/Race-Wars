@@ -19,7 +19,7 @@ export type AIMode = 'race' | 'follow' | 'overtake' | 'recover';
 interface Seen { ds: number; d: number; vs: number; body: Body; }
 
 const G = 9.81;
-const CAR_CLEARANCE = 2.5;
+const CAR_CLEARANCE = 2.7;
 
 export class AIController {
   mode: AIMode = 'race';

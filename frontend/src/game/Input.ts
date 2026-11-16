@@ -9,7 +9,7 @@ export type InputAction = 'pause' | 'camera' | 'reset' | 'mute';
 
 const HELD_CODES = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Space', 'ShiftLeft', 'ShiftRight',
+  'Space', 'ShiftLeft', 'ShiftRight', 'KeyH',
 ]);
 const ACTION_CODES: Record<string, InputAction> = { Escape: 'pause', KeyP: 'pause', KeyC: 'camera', KeyR: 'reset', KeyM: 'mute' };
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
@@ -44,6 +44,7 @@ export class Input {
   get right(): boolean { return this.held.has('KeyD') || this.held.has('ArrowRight'); }
   get handbrake(): boolean { return this.held.has('Space'); }
   get nitro(): boolean { return this.held.has('ShiftLeft') || this.held.has('ShiftRight'); }
+  get horn(): boolean { return this.held.has('KeyH'); }
   get heldCount(): number { return this.held.size; }
 
   /** Returns true once per key press. */

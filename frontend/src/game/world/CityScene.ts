@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Track, BARRIER_OFFSET } from '../track/Track';
 import {
-  roadTextures, ROAD_TEX_WIDTH, ROAD_TEX_LENGTH, facadeTexture, facadeEmissive, skylineTexture, skyTexture,
+  roadTextures, ROAD_TEX_WIDTH, ROAD_TEX_LENGTH, skylineTexture, skyTexture,
   glowTexture, concreteTexture, checkerTexture, bannerTexture,
 } from '../render/Textures';
 import { mulberry32 } from '../ai/AIController';
+import { buildBuildings, FACADE_STYLES, type BuildingSpec } from './Buildings';
 
 /**
  * Race Wars — night metropolitan circuit. Every object is placed from the
@@ -26,6 +27,7 @@ export class CityScene {
   private lampHeads: THREE.Vector3[] = [];
   private dynLights: THREE.PointLight[] = [];
   private skyline: THREE.Mesh;
+  private lightCones: THREE.InstancedMesh | null = null;
   private sky: THREE.Mesh;
 
   constructor(track: Track) {
@@ -120,7 +122,7 @@ export class CityScene {
     const nrm = geo.getAttribute('normal');
     for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0);
     const mat = new THREE.MeshStandardMaterial({
-      map, roughnessMap: rough, roughness: 0.85, metalness: 0.08, envMapIntensity: 0.75, color: 0xb8bcc4,
+      map, roughnessMap: rough, roughness: 0.78, metalness: 0.1, envMapIntensity: 0.95, color: 0xaeb3bb,
     });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;
@@ -209,6 +211,31 @@ export class CityScene {
     }
     poles.castShadow = false;
     this.scene.add(poles, arms, heads, pools);
+    // Volumetric light cones and wet-road reflection streaks under each lamp
+    const coneGeo = new THREE.ConeGeometry(4.2, 9.4, 16, 1, true).translate(0, -4.7, 0);
+    const coneMat = new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(0xffb46a) } },
+      vertexShader: 'varying float vY; varying vec3 vN; varying vec3 vV; void main(){ vY = position.y; vec4 mv = modelViewMatrix * instanceMatrix * vec4(position,1.0); vN = normalize(normalMatrix * mat3(instanceMatrix) * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform vec3 color; varying float vY; varying vec3 vN; varying vec3 vV; void main(){ float h = clamp(1.0 + vY / 9.4, 0.0, 1.0); float rim = pow(1.0 - abs(dot(vN, vV)), 1.5); gl_FragColor = vec4(color, 0.035 * h * h * (0.35 + rim)); }',
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const cones = new THREE.InstancedMesh(coneGeo, coneMat, this.lampHeads.length);
+    const streakGeo = new THREE.PlaneGeometry(0.9, 18).rotateX(-Math.PI / 2);
+    const streakMat = new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0xffa14a, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
+    const streaks = new THREE.InstancedMesh(streakGeo, streakMat, this.lampHeads.length);
+    streaks.renderOrder = 1;
+    this.lampHeads.forEach((v, i) => {
+      m.compose(new THREE.Vector3(v.x, 9.5, v.z), new THREE.Quaternion(), one);
+      cones.setMatrixAt(i, m);
+      const tp = t.project(v.x, v.z, -1);
+      const base = t.pointAt(tp.s - 6, tp.d * 0.92);
+      q.setFromAxisAngle(up, t.headingAt(tp.s));
+      m.compose(new THREE.Vector3(base.x, 0.03, base.z), q, one);
+      streaks.setMatrixAt(i, m);
+    });
+    cones.frustumCulled = false;
+    this.scene.add(cones, streaks);
+    this.lightCones = cones;
     const haloGeo = new THREE.BufferGeometry();
     haloGeo.setAttribute('position', new THREE.Float32BufferAttribute(halo, 3));
     const haloMat = new THREE.PointsMaterial({ map: glowTexture(), color: 0xffb070, size: 2.6, sizeAttenuation: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -220,8 +247,7 @@ export class CityScene {
   private buildBuildings(): void {
     const t = this.track;
     const rnd = mulberry32(2024);
-    const geos: THREE.BufferGeometry[][] = [[], [], [], []];
-    const beacons: number[] = [];
+    const specs: BuildingSpec[] = [];
     const neon: THREE.BufferGeometry[][] = [[], [], []];
     const placed: { x: number; z: number; r: number }[] = [];
     const clearOfTrack = (x: number, z: number, r: number) => {
@@ -236,52 +262,69 @@ export class CityScene {
       for (let row = 0; row < 2; row++) {
         let s = rnd() * 20;
         while (s < t.length) {
-          const w = 18 + rnd() * 30, dep = 16 + rnd() * 22;
-          const tall = row === 1 ? 70 + rnd() * 150 : 18 + rnd() * 70;
-          const dist = 20 + dep / 2 + rnd() * 4 + row * 46;
-          t.pointAt(s + w / 2, side * dist, p);
-          const r = Math.hypot(w, dep) / 2;
+          const along = 20 + rnd() * 28, depth = 16 + rnd() * 22;
+          const tall = row === 1 ? 70 + rnd() * 150 : 20 + rnd() * 75;
+          const dist = 21 + depth / 2 + rnd() * 3 + row * 46;
+          t.pointAt(s + along / 2, side * dist, p);
+          const r = Math.hypot(along, depth) / 2;
           if (clearOfTrack(p.x, p.z, r * 0.8)) {
             placed.push({ x: p.x, z: p.z, r });
-            const variant = Math.floor(rnd() * 4);
-            const g = new THREE.BoxGeometry(w, tall, dep);
-            scaleBoxUV(g, w, tall, dep, 14, 13);
-            g.rotateY(t.headingAt(s + w / 2));
-            g.translate(p.x, tall / 2, p.z);
-            geos[variant].push(g);
-            if (tall > 90) beacons.push(p.x, tall + 1.5, p.z);
-            if (row === 0 && rnd() < 0.35) {
-              const sign = new THREE.BoxGeometry(w * 0.6, 2.2, 0.4);
-              const facing = t.pointAt(s + w / 2, side * (dist - dep / 2 - 0.3), { x: 0, z: 0 });
-              sign.rotateY(t.headingAt(s + w / 2));
-              sign.translate(facing.x, 10 + rnd() * Math.max(2, tall - 16), facing.z);
+            const style = FACADE_STYLES[Math.floor(rnd() * FACADE_STYLES.length)];
+            specs.push({ x: p.x, z: p.z, heading: t.headingAt(s + along / 2), w: depth, d: along, h: tall, style, seed: Math.floor(rnd() * 1e9) });
+            if (row === 0 && rnd() < 0.4) {
+              const sign = new THREE.BoxGeometry(0.4, 2.4, along * 0.55);
+              const facing = t.pointAt(s + along / 2, side * (dist - depth / 2 - 0.4), { x: 0, z: 0 });
+              sign.rotateY(t.headingAt(s + along / 2));
+              sign.translate(facing.x, 11 + rnd() * Math.max(2, tall - 18), facing.z);
               neon[Math.floor(rnd() * 3)].push(sign);
             }
           }
-          s += w + 4 + rnd() * 18;
+          s += along + 3 + rnd() * 14;
         }
       }
     }
-    geos.forEach((list, v) => {
-      if (!list.length) return;
-      const mat = new THREE.MeshStandardMaterial({
-        map: facadeTexture(v), emissiveMap: facadeEmissive(v), emissive: 0xffffff, emissiveIntensity: 0.45,
-        roughness: 0.6, metalness: 0.35, color: 0x6c7380,
-      });
-      const mesh = new THREE.Mesh(mergeGeometries(list), mat);
-      mesh.name = `buildings-${v}`;
-      this.scene.add(mesh);
-      list.forEach(g => g.dispose());
-    });
+    const city = buildBuildings(specs);
+    this.scene.add(city);
     const neonColors = [0xff2340, 0x22d3ff, 0xff9a1f];
     neon.forEach((list, i) => {
       if (!list.length) return;
       const mat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: neonColors[i], emissiveIntensity: 3 });
       this.scene.add(new THREE.Mesh(mergeGeometries(list), mat));
     });
+    const beacons = (city.userData as { beacons: number[] }).beacons;
     const bGeo = new THREE.BufferGeometry();
     bGeo.setAttribute('position', new THREE.Float32BufferAttribute(beacons, 3));
     this.scene.add(new THREE.Points(bGeo, new THREE.PointsMaterial({ map: glowTexture(), color: 0xff2020, size: 6, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    this.buildTrees(placed);
+  }
+
+  /** Street trees on the sidewalks between lamp posts (instanced). */
+  private buildTrees(buildings: { x: number; z: number; r: number }[]): void {
+    const t = this.track;
+    const rnd = mulberry32(55);
+    const spots: THREE.Matrix4[] = [];
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    for (let s = 23; s < t.length; s += 23) {
+      for (const side of [-1, 1]) {
+        if (rnd() < 0.2) continue;
+        const p = t.pointAt(s, side * 16.5);
+        let ok = true;
+        for (let i = 0; i < t.count && ok; i += 4) if ((p.x - t.px[i]) ** 2 + (p.z - t.pz[i]) ** 2 < 14 * 14) ok = false;
+        if (!ok || buildings.some(b => (b.x - p.x) ** 2 + (b.z - p.z) ** 2 < (b.r * 0.6) ** 2)) continue;
+        const sc = 0.8 + rnd() * 0.45;
+        q.setFromAxisAngle(up, rnd() * 6.28);
+        spots.push(m.clone().compose(new THREE.Vector3(p.x, 0.15, p.z), q, new THREE.Vector3(sc, sc, sc)));
+      }
+    }
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.22, 3.2, 6).translate(0, 1.6, 0), new THREE.MeshStandardMaterial({ color: 0x2b2118, roughness: 0.95 }), spots.length);
+    const crownGeo = mergeGeometries([
+      new THREE.IcosahedronGeometry(1.9, 1).translate(0, 4.2, 0),
+      new THREE.IcosahedronGeometry(1.4, 1).translate(0.8, 5.2, 0.3),
+      new THREE.IcosahedronGeometry(1.3, 1).translate(-0.7, 5.0, -0.4),
+    ]);
+    const crown = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0x1d2a1a, roughness: 0.9, flatShading: true }), spots.length);
+    spots.forEach((mx, i) => { trunk.setMatrixAt(i, mx); crown.setMatrixAt(i, mx); });
+    this.scene.add(trunk, crown);
   }
 
   // ── Start/finish, signage ──────────────────────────────────────────────────
@@ -365,20 +408,6 @@ export class CityScene {
       (this.moon.shadow as { map: THREE.WebGLRenderTarget | null }).map = null;
     }
     this.dynLights.forEach((l, i) => { l.visible = q !== 'low' || i < 2; });
-  }
-}
-
-/** Scale BoxGeometry UVs so the facade texture tiles at a fixed world size; roofs use the plain wall. */
-function scaleBoxUV(g: THREE.BoxGeometry, w: number, h: number, d: number, tileW: number, tileH: number): void {
-  const uv = g.getAttribute('uv');
-  // Face order: +x, -x, +y, -y, +z, -z (4 vertices each)
-  const dims: [number, number][] = [[d, h], [d, h], [0, 0], [0, 0], [w, h], [w, h]];
-  for (let f = 0; f < 6; f++) {
-    for (let v = 0; v < 4; v++) {
-      const i = f * 4 + v;
-      const [a, b] = dims[f];
-      if (a === 0) uv.setXY(i, 0.01, 0.99);
-      else uv.setXY(i, uv.getX(i) * (a / tileW), uv.getY(i) * (b / tileH));
-    }
+    if (this.lightCones) this.lightCones.visible = q !== 'low';
   }
 }

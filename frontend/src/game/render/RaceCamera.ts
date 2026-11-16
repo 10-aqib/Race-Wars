@@ -12,8 +12,8 @@ export type CameraMode = 'chase' | 'close' | 'hood';
 export const CAMERA_MODES: CameraMode[] = ['chase', 'close', 'hood'];
 
 const PRESETS: Record<CameraMode, { dist: number; height: number; look: number; lookH: number; fov: number; follow: number }> = {
-  chase: { dist: 7.6, height: 2.55, look: 6, lookH: 1.0, fov: 60, follow: 7 },
-  close: { dist: 5.4, height: 1.75, look: 7, lookH: 0.95, fov: 64, follow: 9 },
+  chase: { dist: 5.9, height: 1.95, look: 7, lookH: 0.95, fov: 58, follow: 8 },
+  close: { dist: 4.4, height: 1.45, look: 8, lookH: 0.9, fov: 62, follow: 10 },
   hood: { dist: -1.25, height: 1.1, look: 20, lookH: 1.0, fov: 72, follow: 30 },
 };
 
@@ -62,8 +62,8 @@ export class RaceCamera {
     this.accelOffset += (THREE.MathUtils.clamp(sim.longAccel, -14, 14) * 0.045 - this.accelOffset) * Math.min(1, dt * 3);
 
     const fx = -Math.sin(this.heading), fz = -Math.cos(this.heading);
-    const dist = p.dist + (this.mode === 'hood' ? 0 : ratio * 1.6 + this.accelOffset);
-    const height = p.height + (this.mode === 'hood' ? 0 : ratio * 0.3);
+    const dist = p.dist + (this.mode === 'hood' ? 0 : ratio * 0.9 + this.accelOffset);
+    const height = p.height + (this.mode === 'hood' ? 0 : ratio * 0.15);
     const desired = new THREE.Vector3(x - fx * dist, height, z - fz * dist);
     const cfx = -Math.sin(heading), cfz = -Math.cos(heading);
     const look = new THREE.Vector3(x + cfx * (p.look + ratio * 6), p.lookH, z + cfz * (p.look + ratio * 6));
@@ -97,7 +97,7 @@ export class RaceCamera {
     this.camera.position.y = Math.max(0.5, this.camera.position.y);
     this.camera.lookAt(this.look);
 
-    const targetFov = p.fov + ratio * 12 + (sim.boosting ? 7 : 0);
+    const targetFov = p.fov + ratio * 10 + (sim.boosting ? 7 : 0);
     this.fov += (targetFov - this.fov) * Math.min(1, dt * 3);
     if (Math.abs(this.camera.fov - this.fov) > 0.01) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }
   }

@@ -31,8 +31,8 @@ export interface SurfaceInfo {
 export const NEUTRAL_INPUT: Readonly<DriveInput> = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
 const ROAD: SurfaceInfo = { grip: 1, rolling: 0 };
 const G = 9.81;
-export const CAR_HALF_LENGTH = 2.25;
-export const CAR_HALF_WIDTH = 0.98;
+export const CAR_HALF_LENGTH = 2.5;  // 4.5 m model × 1.11 visual scale
+export const CAR_HALF_WIDTH = 1.08;
 const CG_HEIGHT = 0.36;
 const STABILITY_ASSIST = 1.6; // 1/s yaw damping toward the steered path (off with handbrake)
 const WHEEL_RADIUS = 0.34;

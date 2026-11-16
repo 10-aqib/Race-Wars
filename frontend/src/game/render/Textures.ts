@@ -126,51 +126,6 @@ export function roadTextures(): { map: THREE.Texture; rough: THREE.Texture } {
   return { map, rough };
 }
 
-/** Building facade: window grid with mullions; ~25% of windows lit. */
-export function facadeTexture(variant: number): THREE.Texture {
-  return make(`facade-${variant}`, () => {
-    const [c, ctx] = canvas(256, 256);
-    const rnd = mulberry32(100 + variant);
-    const palettes = [['#0c1018', '#ffcf8f', '#a9c8ff'], ['#0e0e11', '#ffe2b0', '#ffc77a'], ['#090c13', '#c4defc', '#86b0f0'], ['#121216', '#ffc88a', '#e9f1ff']];
-    const [wall, warm, cool] = palettes[variant % palettes.length];
-    ctx.fillStyle = wall; ctx.fillRect(0, 0, 256, 256);
-    const cols = variant % 2 ? 6 : 8, rows = 8, cw = 256 / cols, rh = 256 / rows;
-    for (let r = 0; r < rows; r++) {
-      const floorLit = rnd() < 0.55;
-      for (let k = 0; k < cols; k++) {
-        const lit = floorLit && rnd() < 0.45;
-        ctx.fillStyle = lit ? (rnd() < 0.65 ? warm : cool) : (rnd() < 0.5 ? '#121822' : '#171d28');
-        ctx.globalAlpha = lit ? 0.55 + rnd() * 0.45 : 1;
-        ctx.fillRect(k * cw + 3, r * rh + 6, cw - 6, rh - 12);
-      }
-    }
-    ctx.globalAlpha = 1;
-    // Mullions and floor slabs
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    for (let k = 0; k < cols; k++) ctx.fillRect(k * cw + cw / 2 - 1, 0, 2, 256);
-    ctx.fillStyle = 'rgba(160,170,190,0.08)';
-    for (let r = 0; r < rows; r++) ctx.fillRect(0, r * rh, 256, 3);
-    return c;
-  }, { repeat: true });
-}
-
-/** Emissive mask matching facadeTexture (only lit windows glow). */
-export function facadeEmissive(variant: number): THREE.Texture {
-  return make(`facade-e-${variant}`, () => {
-    const src = (facadeTexture(variant).image as HTMLCanvasElement);
-    const [c, ctx] = canvas(256, 256);
-    ctx.drawImage(src, 0, 0);
-    const img = ctx.getImageData(0, 0, 256, 256);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const l = (img.data[i] + img.data[i + 1] + img.data[i + 2]) / 3;
-      const k = l > 90 ? 1 : 0;
-      img.data[i] *= k; img.data[i + 1] *= k; img.data[i + 2] *= k;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
-  }, { repeat: true });
-}
-
 /** Distant skyline silhouette strip with lit windows (wraps around the horizon). */
 export function skylineTexture(): THREE.Texture {
   return make('skyline', () => {

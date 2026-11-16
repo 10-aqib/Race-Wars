@@ -18,6 +18,8 @@ export interface CarViewOptions {
   reflections?: boolean;    // wet-road light streaks
 }
 
+/** Visual scale over the 4.5 m normalised model (physics extents match in VehicleSim). */
+export const CAR_SCALE = 1.11;
 const _q1 = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 
@@ -43,6 +45,7 @@ export class CarView {
   constructor(opts: CarViewOptions) {
     this.paint = opts.paint;
     this.group.name = 'car';
+    this.group.scale.setScalar(CAR_SCALE);
     this.ready = createCarParts('/car.glb', opts.paint, opts.trim ?? 'dark').then(parts => {
       if (this.disposed) { disposeCarParts(parts); return; }
       this.parts = parts;

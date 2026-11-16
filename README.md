@@ -53,6 +53,7 @@ npm run preview
 | Shift | Nitro |
 | C | Cycle camera (chase / close / hood) |
 | R | Reset onto the track |
+| H | Horn |
 | M | Mute |
 | Esc | Pause / resume |
 
