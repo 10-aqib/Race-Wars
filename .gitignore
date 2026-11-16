@@ -7,3 +7,4 @@ dist/
 !.env.example
 frontend/test-results/
 frontend/qa-output/
+.vercel
