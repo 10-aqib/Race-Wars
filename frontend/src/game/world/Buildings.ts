@@ -75,7 +75,7 @@ export function facadeMaps(style: FacadeStyle): FacadeMaps {
   const [ce, emi] = canvas();
   const [cr, rough] = canvas();
   const [ch, height] = canvas();
-  emi.fillStyle = '#000'; emi.fillRect(0, 0, TEX, TEX);
+  emi.fillStyle = { glass: '#0d1520', concrete: '#1c1b19', brick: '#1d120d', dark: '#0b0c0f' }[style]; emi.fillRect(0, 0, TEX, TEX);
   const bays = 8, floors = 8, bw = TEX / bays, fh = TEX / floors;
   const warm = ['#ffd49a', '#ffc77d', '#ffe6bf', '#f9b56a'];
   const cool = ['#cfe2ff', '#a9c9ff', '#e8f1ff'];
@@ -231,7 +231,7 @@ export function facadeMaterial(style: FacadeStyle | 'store'): THREE.MeshStandard
   const m = style === 'store' ? storefrontMaps() : facadeMaps(style);
   return new THREE.MeshStandardMaterial({
     map: m.map, emissiveMap: m.emissive, emissive: 0xffffff,
-    emissiveIntensity: style === 'store' ? 0.62 : style === 'dark' ? 1.1 : 0.9,
+    emissiveIntensity: style === 'store' ? 0.62 : style === 'dark' ? 1.15 : 1.05,
     roughnessMap: m.rough, roughness: 1, normalMap: m.normal, normalScale: new THREE.Vector2(0.8, 0.8),
     metalness: style === 'glass' ? 0.55 : style === 'dark' ? 0.35 : 0.05,
     envMapIntensity: style === 'glass' ? 1.4 : 0.6,

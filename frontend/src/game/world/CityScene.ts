@@ -36,8 +36,8 @@ export class CityScene {
     scene.background = new THREE.Color(0x03050a);
     scene.fog = new THREE.FogExp2(0x070a13, 0.0019);
 
-    scene.add(new THREE.AmbientLight(0x2a3550, 0.6));
-    scene.add(new THREE.HemisphereLight(0x23314f, 0x0b0b0c, 0.7));
+    scene.add(new THREE.AmbientLight(0x3a4560, 0.9));
+    scene.add(new THREE.HemisphereLight(0x3a4a70, 0x2a1d12, 1.1));
     this.moon = new THREE.DirectionalLight(0x9fb4ff, 0.55);
     this.moon.castShadow = true;
     this.moon.shadow.mapSize.set(1024, 1024);
@@ -122,7 +122,7 @@ export class CityScene {
     const nrm = geo.getAttribute('normal');
     for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0);
     const mat = new THREE.MeshStandardMaterial({
-      map, roughnessMap: rough, roughness: 0.78, metalness: 0.1, envMapIntensity: 0.95, color: 0xaeb3bb,
+      map, roughnessMap: rough, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.07, roughness: 0.78, metalness: 0.1, envMapIntensity: 0.95, color: 0xaeb3bb,
     });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;

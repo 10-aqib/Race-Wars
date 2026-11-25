@@ -63,6 +63,7 @@ export class Game {
   private inRace = false;
   private quality: GameSettings['qualityPreset'] = 'medium';
   private lastGear = 0;
+  private steerInput = 0;
   private driftScore = 0;
   private driftTime = 0;
   private driftCooldown = 0;
@@ -267,6 +268,7 @@ export class Game {
     this.camera.snap();
     this.hud.clear();
     this.lastGear = 0;
+    this.steerInput = 0;
     this.syncViews(1, 0);
     audioManager.stopMusic();
     audioManager.startRaceMusic();
@@ -422,7 +424,12 @@ export class Game {
       const i = this.input, b = player.body.input;
       b.throttle = i.forward ? 1 : 0;
       b.brake = i.backward ? 1 : 0;
-      b.steer = (i.left ? 1 : 0) - (i.right ? 1 : 0);
+      // Keyboard steering ramps in (≈0.4 s to full lock) and returns quicker, for smooth handling
+      const want = (i.left ? 1 : 0) - (i.right ? 1 : 0);
+      const back = want === 0 || Math.sign(want) !== Math.sign(this.steerInput);
+      const rate = (back ? 4.5 : 2.5) * FIXED_DT;
+      this.steerInput += Math.max(-rate, Math.min(rate, want - this.steerInput));
+      b.steer = this.steerInput;
       b.handbrake = i.handbrake;
       b.nitro = i.nitro;
     }
